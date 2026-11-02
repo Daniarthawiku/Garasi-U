@@ -3,12 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import AuthCard from "@/components/auth/organisms/AuthCard";
-import { garageVehiclesData } from "@/data/garageData";
+import SupportedBrands from "@/components/auth/SupportedBrands";
 
-/**
- * Konfigurasi field form Sign Up (Array of Objects) — Migrasi dari `GarasiiU/signup.html`
- * dengan aturan desain dari `GarasiiU/style.css`.
- */
 const SIGNUP_FIELDS = [
   {
     id: "fullName",
@@ -73,28 +69,31 @@ export default function SignupPage() {
   };
 
   return (
-    <main className="flex min-h-screen w-full items-center justify-center p-6">
-      <AuthCard
-        badgeText="Register New Garage Passport"
-        gatewayText="APEXLOG // SIGNUP"
-        title="Create Your Garage"
-        subtitle="Initialize digital service passport, telemetry tracking, and fuel analytics for your vehicles."
-        fields={SIGNUP_FIELDS}
-        formValues={formValues}
-        onFieldChange={handleFieldChange}
-        rememberChecked={agreeTerms}
-        onRememberChange={(e) => setAgreeTerms(e.target.checked)}
-        rememberLabel="Sync initial telemetry & accept service passport terms"
-        submitLabel="Register Garage"
-        submitIcon="person_add"
-        onSubmit={handleSubmit}
-        footerPrompt="Already have a garage account?"
-        footerLinkLabel="Sign In Here"
-        footerLinkHref="/login"
-        vehicles={garageVehiclesData}
-        feedbackMessage={feedback}
-      />
-    </main>
+    <div className="flex min-h-[100dvh] w-full flex-col justify-between">
+      <main className="flex flex-1 items-center justify-center px-6 py-10">
+        <AuthCard
+          badgeText="Register New Garage Passport"
+          gatewayText="Otomotive holic"
+          title="Create Your Garage"
+          subtitle="Initialize digital service passport, telemetry tracking, and fuel analytics for your vehicles."
+          fields={SIGNUP_FIELDS}
+          formValues={formValues}
+          onFieldChange={handleFieldChange}
+          rememberChecked={agreeTerms}
+          onRememberChange={(e) => setAgreeTerms(e.target.checked)}
+          rememberLabel="Sync initial telemetry & accept service passport terms"
+          submitLabel="Register Garage"
+          submitIcon="person_add"
+          onSubmit={handleSubmit}
+          footerPrompt="Already have a garage account?"
+          footerLinkLabel="Sign In Here"
+          footerLinkHref="/login"
+          feedbackMessage={feedback}
+        />
+      </main>
+
+      <SupportedBrands />
+    </div>
   );
 }
 
