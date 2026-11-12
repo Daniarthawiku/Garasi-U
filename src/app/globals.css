@@ -2,6 +2,15 @@
 
 @config "../../tailwind.config.js";
 
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
 @layer base {
   body {
     @apply bg-canvas bg-blueprint bg-[size:32px_32px] font-body text-ink-primary leading-relaxed antialiased;
@@ -14,5 +23,11 @@
   h5,
   h6 {
     @apply font-heading font-bold tracking-heading;
+  }
+}
+
+@layer utilities {
+  .animate-marquee {
+    animation: marquee 25s linear infinite;
   }
 }
