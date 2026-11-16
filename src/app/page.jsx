@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Header from "@/components/Header";
-import DashboardHero from "@/components/DashboardHero";
-import MetricWidget from "@/components/MetricWidget";
-import VehicleCard from "@/components/VehicleCard";
-import AddVehicleForm from "@/components/AddVehicleForm";
-import { getPartStatus } from "@/components/PartProgressBar";
-import Footer from "@/components/Footer";
-
+import Header from "@/components/shared/organisms/Header";
+import DashboardHero from "@/components/dashboard/molecules/DashboardHero";
+import MetricWidget from "@/components/dashboard/molecules/MetricWidget";
+import VehicleCard from "@/components/dashboard/organisms/VehicleCard";
+import AddVehicleForm from "@/components/shared/organisms/AddVehicleForm";
+import { getPartStatus } from "@/components/dashboard/atoms/PartProgressBar";
+import Footer from "@/components/shared/organisms/Footer";
 
 /* DUMMY */
 const navLinks = [
