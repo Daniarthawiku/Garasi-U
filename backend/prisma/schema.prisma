@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VehicleType {
+  CAR
+  MOTORCYCLE
+}
+
+enum VehicleServiceStatus {
+  NOT_SYNC
+  HEALTHY
+  SERVICE_SOON
+  NEED_MAINTENANCE
+}
+
+enum ServiceCategory {
+  ROUTINE_MAINTENANCE
+  UNSCHEDULED_REPAIR
+}
+
+enum ServiceLogStatus {
+  VERIFIED
+  COMPLETED
+}
+
+model Vehicle {
+  id              String               @id @default(uuid()) @db.Uuid
+  brand           String               @db.VarChar(80)
+  model           String               @db.VarChar(100)
+  nickname        String?              @db.VarChar(80)
+  type            VehicleType          @default(CAR)
+  year            Int?                 @db.SmallInt
+  plate           String?              @unique @db.VarChar(20)
+  tankCapacity    Float?
+  initialOdometer Int                  @default(0)
+  currentOdometer Int                  @default(0)
+  serviceStatus   VehicleServiceStatus @default(NOT_SYNC)
+  isActive        Boolean              @default(true)
+  lastServiceDate DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  parts       VehiclePart[]
+  serviceLogs ServiceLog[]
+
+  @@map("vehicles")
+}
+
+model VehiclePart {
+  id              String   @id @default(uuid()) @db.Uuid
+  vehicleId       String   @db.Uuid
+  name            String   @db.VarChar(120)
+  intervalKm      Int      @default(5000)
+  lastServiceOdo  Int
+  lastServiceDate DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  vehicle     Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  serviceLogs ServiceLog[]
+
+  @@unique([vehicleId, name])
+  @@index([vehicleId])
+  @@map("vehicle_parts")
+}
+
+model ServiceLog {
+  id                String           @id @default(uuid()) @db.Uuid
+  vehicleId         String           @db.Uuid
+  vehiclePartId     String?          @db.Uuid
+  serviceDate       DateTime
+  odometerAtService Int
+  category          ServiceCategory  @default(ROUTINE_MAINTENANCE)
+  status            ServiceLogStatus @default(VERIFIED)
+  part              String           @db.VarChar(150)
+  workshop          String           @db.VarChar(120)
+  cost              Decimal          @db.Decimal(12, 2)
+  isWarrantyClaim   Boolean          @default(false)
+  notes             String?          @db.Text
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  vehicle     Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehiclePart VehiclePart? @relation(fields: [vehiclePartId], references: [id], onDelete: SetNull)
+
+  @@index([vehicleId, serviceDate(sort: Desc)])
+  @@map("service_logs")
+}
+
