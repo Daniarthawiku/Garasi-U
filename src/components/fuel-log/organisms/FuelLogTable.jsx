@@ -87,7 +87,7 @@ export default function FuelLogTable({
                   colSpan={8}
                   className="py-8 text-center font-mono text-xs text-ink-muted"
                 >
-                  Belum ada data riwayat pengisian BBM untuk filter ini.
+                  No fuel log records found for this filter yet.
                 </td>
               </tr>
             ) : (

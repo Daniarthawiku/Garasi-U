@@ -43,7 +43,7 @@ export default function SupportedBrands() {
       const response = await fetch(API_URL);
 
       if (!response.ok) {
-        throw new Error("Gagal mengambil data dari server API.");
+        throw new Error("Failed to fetch data from the API server.");
       }
 
       const data = await response.json();
@@ -128,7 +128,7 @@ export default function SupportedBrands() {
         <div className="mx-auto flex max-w-md items-center justify-center gap-4 px-6 py-1.5 text-xs">
           <span className="flex items-center gap-1.5 font-mono text-status-danger">
             <Icon name="error" size={15} />
-            Gagal memuat telemetri brand pabrikan
+            Failed to load manufacturer brand telemetry
           </span>
           <button
             type="button"
@@ -136,7 +136,7 @@ export default function SupportedBrands() {
             className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-line-subtle bg-surface-raised px-3 py-1 font-mono text-[11px] text-ink-primary transition-colors hover:border-action active:scale-[0.98]"
           >
             <Icon name="refresh" size={14} className="text-action" />
-            Muat Ulang
+            Reload
           </button>
         </div>
       )}

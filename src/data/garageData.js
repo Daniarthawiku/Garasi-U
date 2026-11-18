@@ -5,8 +5,8 @@
 
 export const navLinks = [
   { label: "Dashboard", href: "/" },
-  { label: "Log BBM", href: "/fuel-log" },
-  { label: "Log Service", href: "/service-log" },
+  { label: "Fuel Log", href: "/fuel-log" },
+  { label: "Service Log", href: "/service-log" },
 ];
 
 export const currentUser = {

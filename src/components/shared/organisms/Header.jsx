@@ -44,7 +44,7 @@ export default function Header({
         >
           {ctaLabel}
         </button>
-        <Link href="/login" title="Autentikasi Pemilik Kendaraan (Login)">
+        <Link href="/login" title="Vehicle Owner Authentication (Login)">
           <Image
             src={profile.src}
             alt={profile.alt}

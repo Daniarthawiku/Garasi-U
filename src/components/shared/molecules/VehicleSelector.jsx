@@ -24,15 +24,22 @@ export default function VehicleSelector({
       <div className="relative">
         <select
           id={id}
-          value={selectedVehicleId}
+          value={selectedVehicleId || ""}
+          disabled={vehicles.length === 0}
           onChange={(e) => onSelectChange && onSelectChange(e.target.value)}
-          className="w-full cursor-pointer appearance-none rounded border border-line-bright bg-canvas py-2 pr-9 pl-3 font-mono text-[13px] text-ink-primary transition-colors focus:border-action focus:outline-none"
+          className="w-full cursor-pointer appearance-none rounded border border-line-bright bg-canvas py-2 pr-9 pl-3 font-mono text-[13px] text-ink-primary transition-colors focus:border-action focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {vehicles.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name} ({v.year}) • {v.plate} [{v.category || v.type}]
-            </option>
-          ))}
+          {vehicles.length === 0 ? (
+            <option value="">No vehicles available</option>
+          ) : (
+            vehicles.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+                {v.year ? ` (${v.year})` : ""}
+                {v.plate ? ` • ${v.plate}` : ""} [{v.category || v.type}]
+              </option>
+            ))
+          )}
         </select>
         <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-ink-muted">
           <Icon name={icon} size={20} />

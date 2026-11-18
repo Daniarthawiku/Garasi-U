@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/shared/organisms/Header";
 import DashboardHero from "@/components/dashboard/molecules/DashboardHero";
 import MetricWidget from "@/components/dashboard/molecules/MetricWidget";
@@ -8,96 +8,12 @@ import VehicleCard from "@/components/dashboard/organisms/VehicleCard";
 import AddVehicleForm from "@/components/shared/organisms/AddVehicleForm";
 import { getPartStatus } from "@/components/dashboard/atoms/PartProgressBar";
 import Footer from "@/components/shared/organisms/Footer";
-
-/* DUMMY */
-const navLinks = [
-  { label: "Dashboard", href: "/" },
-  { label: "Log BBM", href: "/fuel-log" },
-  { label: "Log Service", href: "/service-log" },
-];
-
-const currentUser = {
-  name: "Daniartha",
-  avatar: { src: "/img/profile.png", alt: "Profile Photo" },
-};
-
-const initialVehicles = [
-  {
-    id: "aventador-2015",
-    type: "Hypercar",
-    name: "Lamborghini Aventador LP700-4",
-    nickname: "The Bull",
-    year: 2015,
-    engine: "6.5-liter naturally aspirated V12 with 7-speed Graziano ISR single-clutch",
-    plate: "B 700 LMB",
-    odometer: 142500,
-    fuelEfficiency: 5.2,
-    costPerKm: 12000,
-    monthlySpending: 3850000,
-    lastService: "2026-06-14",
-    parts: [
-      { id: "oil", name: "Shell Helix Engine Oil", wear: 108, overKm: 45 },
-      { id: "coolant", name: "Shell Water Coolant", wear: 25 },
-      { id: "brake-fluid", name: "Brembo Brake Fluid", wear: 80 },
-    ],
-  },
-  {
-    id: "panigale-v4r-2020",
-    type: "Superbike",
-    name: "Ducati Panigale V4 R",
-    nickname: "Red Rocket",
-    year: 2020,
-    engine: "998 cc Desmosedici Stradale R 90° V4",
-    plate: "D 4 DCT",
-    odometer: 18450,
-    fuelEfficiency: 15.6,
-    costPerKm: 3500,
-    monthlySpending: 1250000,
-    lastService: "2026-09-02",
-    parts: [
-      { id: "oil", name: "Shell Advance Engine Oil", wear: 40 },
-      { id: "coolant", name: "Motul Inugel Coolant", wear: 35 },
-      { id: "chain", name: "DID Racing Chain Kit", wear: 62 },
-    ],
-  },
-  {
-    id: "gr-yaris-2022",
-    type: "Hot Hatch",
-    name: "Toyota GR Yaris",
-    nickname: "Pocket Rocket",
-    year: 2022,
-    engine: "1.6-liter G16E-GTS turbocharged 3-cylinder with GR-Four AWD",
-    plate: "F 1618 GRY",
-    odometer: 36200,
-    fuelEfficiency: 12.4,
-    costPerKm: 2100,
-    monthlySpending: 950000,
-    lastService: "2026-04-21",
-    parts: [
-      { id: "oil", name: "TRD Engine Oil 0W-20", wear: 78 },
-      { id: "brake-pads", name: "Endless Brake Pads", wear: 45 },
-      { id: "spark-plug", name: "Denso Iridium Spark Plug", wear: 30 },
-    ],
-  },
-];
-
-
-/* HELPERS                                                             */
-
+import { currentUser, navLinks } from "@/data/garageData";
+import { serviceLogsApi, vehiclesApi } from "@/lib/api";
 
 const numberID = new Intl.NumberFormat("id-ID");
 
-function getVehicleStatus(parts = []) {
-  if (!parts || !parts.length) {
-    return { label: "Not Sync", variant: "neutral" };
-  }
-  const statuses = parts.map((p) => getPartStatus(p.wear));
-  if (statuses.includes("overdue")) return { label: "Need Maintenance", variant: "danger" };
-  if (statuses.includes("dueSoon")) return { label: "Service Soon", variant: "warning" };
-  return { label: "Healthy", variant: "success" };
-}
-
-function buildMetrics(list = []) {
+function buildMetrics(list = [], serviceLogs = []) {
   const overdue = list.flatMap((v) =>
     (v.parts || [])
       .filter((p) => getPartStatus(p.wear) === "overdue")
@@ -107,7 +23,10 @@ function buildMetrics(list = []) {
   const types =
     list.length > 0
       ? Object.entries(
-          list.reduce((acc, v) => ({ ...acc, [v.type]: (acc[v.type] ?? 0) + 1 }), {})
+          list.reduce(
+            (acc, v) => ({ ...acc, [v.type]: (acc[v.type] ?? 0) + 1 }),
+            {}
+          )
         )
           .map(([type, count]) => `${count} ${type}`)
           .join(", ")
@@ -122,7 +41,10 @@ function buildMetrics(list = []) {
         validFuelVehicles.length
       : 0;
 
-  const totalSpending = list.reduce((sum, v) => sum + (v.monthlySpending || 0), 0);
+  const totalSpending = serviceLogs.reduce(
+    (sum, log) => sum + (Number(log.cost) || 0),
+    0
+  );
 
   return [
     {
@@ -143,8 +65,16 @@ function buildMetrics(list = []) {
       unit: "Components Overdue",
       valueVariant: overdue.length ? "danger" : "optimal",
       badge: overdue.length
-        ? { text: `${overdue[0].vehicle}: ${overdue[0].part}`, icon: "warning", variant: "danger" }
-        : { text: "All components healthy", icon: "check_circle", variant: "optimal" },
+        ? {
+            text: `${overdue[0].vehicle}: ${overdue[0].part}`,
+            icon: "warning",
+            variant: "danger",
+          }
+        : {
+            text: "All components healthy",
+            icon: "check_circle",
+            variant: "optimal",
+          },
     },
     {
       id: "fuel-summary",
@@ -153,7 +83,11 @@ function buildMetrics(list = []) {
       iconVariant: "cyan",
       value: avgEfficiency.toFixed(2),
       unit: "km/L",
-      badge: { text: "Average Consumption", icon: "local_gas_station", variant: "optimal" },
+        badge: {
+        text: "Average Consumption",
+        icon: "local_gas_station",
+        variant: "optimal",
+      },
     },
     {
       id: "total-spending",
@@ -162,21 +96,118 @@ function buildMetrics(list = []) {
       iconVariant: "cyan",
       prefix: "Rp",
       value: numberID.format(totalSpending),
-      badge: { text: "Fuel + Tune Up", icon: "receipt_long", variant: "optimal" },
+      badge: {
+        text: `${serviceLogs.length} Service Records`,
+        icon: "receipt_long",
+        variant: "optimal",
+      },
     },
   ];
 }
 
-
 export default function DashboardPage() {
-  const [vehicles, setVehicles] = useState(initialVehicles);
+  const [vehicles, setVehicles] = useState([]);
+  const [serviceLogs, setServiceLogs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState(null);
 
-  const handleAddVehicle = (newVehicle) => {
-    setVehicles((prevVehicles) => [newVehicle, ...prevVehicles]);
+  const loadGarageData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+      const [fetchedVehicles, fetchedLogs] = await Promise.all([
+        vehiclesApi.getAll(),
+        serviceLogsApi.getAll(),
+      ]);
+      setVehicles(fetchedVehicles);
+      setServiceLogs(fetchedLogs);
+    } catch (err) {
+      setErrorMessage(
+        err?.message ||
+          "Failed to connect to the NestJS backend. Please ensure the backend server is running on port 4000."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchInitialData() {
+      try {
+        const [fetchedVehicles, fetchedLogs] = await Promise.all([
+          vehiclesApi.getAll(),
+          serviceLogsApi.getAll(),
+        ]);
+        if (!active) return;
+        setVehicles(fetchedVehicles);
+        setServiceLogs(fetchedLogs);
+        setErrorMessage("");
+      } catch (err) {
+        if (!active) return;
+        setErrorMessage(
+          err?.message ||
+            "Failed to connect to the NestJS backend. Please ensure the backend server is running on port 4000."
+        );
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    fetchInitialData();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleOpenCreateModal = () => {
+    setEditingVehicle(null);
+    setIsModalOpen(true);
   };
 
-  const metrics = buildMetrics(vehicles);
+  const handleOpenEditModal = (vehicleId) => {
+    const target = vehicles.find((v) => v.id === vehicleId) || null;
+    setEditingVehicle(target);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveVehicle = async (formData) => {
+    if (editingVehicle?.id) {
+      const updated = await vehiclesApi.update(editingVehicle.id, formData);
+      setVehicles((prev) =>
+        prev.map((v) => (v.id === updated.id ? updated : v))
+      );
+    } else {
+      const created = await vehiclesApi.create(formData);
+      setVehicles((prev) => [created, ...prev]);
+    }
+  };
+
+  const handleDeleteVehicle = async (vehicleId) => {
+    const target = vehicles.find((v) => v.id === vehicleId);
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm(
+        `Delete vehicle "${target?.name || vehicleId}" along with all its service records?`
+      );
+    if (!confirmed) return;
+
+    try {
+      setErrorMessage("");
+      await vehiclesApi.remove(vehicleId);
+      setVehicles((prev) => prev.filter((v) => v.id !== vehicleId));
+      setServiceLogs((prev) => prev.filter((l) => l.vehicleId !== vehicleId));
+    } catch (err) {
+      setErrorMessage(err?.message || "Failed to delete vehicle.");
+    }
+  };
+
+  const metrics = buildMetrics(vehicles, serviceLogs);
 
   return (
     <>
@@ -185,7 +216,7 @@ export default function DashboardPage() {
         navLinks={navLinks}
         activeHref="/"
         ctaLabel="+ Add New Vehicle"
-        onCtaClick={() => setIsModalOpen(true)}
+        onCtaClick={handleOpenCreateModal}
         profile={currentUser.avatar}
       />
 
@@ -197,7 +228,7 @@ export default function DashboardPage() {
 
         {/* Metrics */}
         <section
-          aria-label="Ringkasan metrik"
+          aria-label="Metrics summary"
           className="mx-4 my-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:mx-14 md:my-8 xl:grid-cols-4"
         >
           {metrics.map(({ id, ...metric }) => (
@@ -208,30 +239,37 @@ export default function DashboardPage() {
         {/* Action Bar */}
         <div className="mx-4 mb-4 flex items-center justify-between text-xs text-ink-muted md:mx-14">
           <span className="font-mono">
-            Showing <strong className="text-ink-primary">{vehicles.length}</strong> vehicle(s)
+            Showing <strong className="text-ink-primary">{vehicles.length}</strong>{" "}
+            vehicle(s) from NestJS API
           </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setVehicles([])}
-              className="cursor-pointer rounded border border-line-subtle bg-surface-raised px-2.5 py-1 text-[11px] font-mono text-status-danger hover:border-status-danger/40 transition"
-              title="Klik untuk menguji tampilan kosong (Conditional Rendering)"
-            >
-              Empty Data
-            </button>
-            <button
-              type="button"
-              onClick={() => setVehicles(initialVehicles)}
-              className="cursor-pointer rounded border border-line-subtle bg-surface-raised px-2.5 py-1 text-[11px] font-mono text-action hover:border-action/40 transition"
-              title="Klik untuk memulihkan data dummy"
-            >
-              Reset Dummy
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={loadGarageData}
+            className="cursor-pointer rounded border border-line-subtle bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-action transition hover:border-action/40"
+          >
+            Refresh Data
+          </button>
         </div>
 
+        {errorMessage && (
+          <div className="mx-4 mb-6 flex items-center justify-between rounded-lg border border-status-danger/40 bg-status-danger/15 px-4 py-3 font-mono text-xs text-status-danger md:mx-14">
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={loadGarageData}
+              className="cursor-pointer rounded border border-status-danger/40 px-2.5 py-1 text-status-danger hover:bg-status-danger hover:text-canvas"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Conditional Rendering */}
-        {vehicles.length === 0 ? (
+        {isLoading ? (
+          <div className="mx-4 my-10 rounded-xl border border-line-subtle bg-surface-raised/40 py-16 text-center font-mono text-xs text-ink-muted md:mx-14">
+            Loading vehicle data from the backend...
+          </div>
+        ) : vehicles.length === 0 ? (
           <div className="mx-4 my-10 rounded-xl border border-dashed border-line-subtle bg-surface-raised/40 py-16 text-center text-gray-500 md:mx-14">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -259,8 +297,8 @@ export default function DashboardPage() {
           </div>
         ) : (
           <section
-            aria-label="Daftar kendaraan"
-            className="grid grid-cols-1 gap-6 px-4 lg:grid-cols-2 md:px-14"
+            aria-label="Vehicle list"
+            className="grid grid-cols-1 gap-6 px-4 md:px-14 lg:grid-cols-2"
           >
             {vehicles.map((vehicle) => (
               <VehicleCard
@@ -273,20 +311,29 @@ export default function DashboardPage() {
                 odometer={vehicle.odometer}
                 fuelEfficiency={vehicle.fuelEfficiency}
                 costPerKm={vehicle.costPerKm}
-                status={getVehicleStatus(vehicle.parts)}
+                status={vehicle.status}
                 parts={vehicle.parts}
+                onEdit={handleOpenEditModal}
+                onDelete={handleDeleteVehicle}
               />
             ))}
           </section>
         )}
       </main>
 
-      {/* AddVehicleForm */}
-      <AddVehicleForm
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={handleAddVehicle}
-      />
+      {/* Add / Edit Vehicle Modal */}
+      {isModalOpen && (
+        <AddVehicleForm
+          key={editingVehicle?.id || "new-vehicle"}
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setEditingVehicle(null);
+          }}
+          onSubmit={handleSaveVehicle}
+          initialData={editingVehicle}
+        />
+      )}
 
       <Footer />
     </>

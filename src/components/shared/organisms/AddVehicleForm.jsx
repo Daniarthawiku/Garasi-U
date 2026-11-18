@@ -2,21 +2,54 @@
 
 import { useState } from "react";
 
+const EMPTY_FORM = {
+  nickname: "",
+  type: "Car",
+  brand: "",
+  model: "",
+  year: "",
+  plate: "",
+  tankCapacity: "",
+  initialOdometer: "",
+};
+
+function getInitialFormData(initialData) {
+  if (!initialData) return EMPTY_FORM;
+  return {
+    nickname: initialData.nickname || "",
+    type: initialData.type === "Motorcycle" ? "Motorcycle" : "Car",
+    brand: initialData.brand || "",
+    model: initialData.model || "",
+    year: initialData.year ? String(initialData.year) : "",
+    plate: initialData.plate || "",
+    tankCapacity:
+      initialData.tankCapacity !== null &&
+      initialData.tankCapacity !== undefined
+        ? String(initialData.tankCapacity)
+        : "",
+    initialOdometer:
+      initialData.odometer !== null && initialData.odometer !== undefined
+        ? String(initialData.odometer)
+        : "",
+  };
+}
+
 /**
  * [Atomic Design: ORGANISM — Shared]
- * AddVehicleForm — Modal form tambah kendaraan baru di seluruh halaman.
+ * AddVehicleForm — Modal form tambah & ubah kendaraan.
  */
-export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
-  const [formData, setFormData] = useState({
-    nickname: "",
-    type: "Car",
-    brand: "",
-    model: "",
-    year: "",
-    plate: "",
-    tankCapacity: "",
-    initialOdometer: "",
-  });
+export default function AddVehicleForm({
+  isOpen = true,
+  onClose,
+  onSubmit,
+  initialData = null,
+}) {
+  const isEditMode = Boolean(initialData?.id);
+  const [formData, setFormData] = useState(() =>
+    getInitialFormData(initialData)
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -33,58 +66,49 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage("");
 
-    if (!formData.brand || !formData.model) {
-      alert("Please fill in Brand and Model.");
+    if (!formData.brand.trim() || !formData.model.trim()) {
+      setErrorMessage("Brand and Model are required.");
       return;
     }
 
     const yearFormatted = formData.year
       ? String(formData.year).includes("-")
-        ? formData.year.split("-")[0]
-        : formData.year
+        ? Number(String(formData.year).split("-")[0])
+        : Number(formData.year)
       : null;
 
-    const newVehicleData = {
-      id: `${formData.brand}-${formData.model}-${Date.now()}`
-        .toLowerCase()
-        .replace(/\s+/g, "-"),
-      name: `${formData.brand} ${formData.model}`.trim(),
-      nickname: formData.nickname || null,
-      type: formData.type === "Car" ? "Car" : "Motorcycle",
-      brand: formData.brand,
-      model: formData.model,
-      year: yearFormatted,
-      engine: null,
+    const odometerNumber =
+      Number(String(formData.initialOdometer).replace(/\./g, "")) || 0;
+
+    const vehiclePayload = {
+      ...(initialData || {}),
+      name: `${formData.brand.trim()} ${formData.model.trim()}`.trim(),
+      nickname: formData.nickname.trim() || null,
+      type: formData.type === "Motorcycle" ? "Motorcycle" : "Car",
+      brand: formData.brand.trim(),
+      model: formData.model.trim(),
+      year: yearFormatted && !Number.isNaN(yearFormatted) ? yearFormatted : null,
       plate: formData.plate.trim() || null,
-      odometer: Number(String(formData.initialOdometer).replace(/\./g, "")) || 0,
+      odometer: odometerNumber,
       tankCapacity: formData.tankCapacity ? Number(formData.tankCapacity) : null,
-      fuelEfficiency: null,
-      costPerKm: null,
-      monthlySpending: 0,
-      lastService: null,
-      status: { label: "Not Sync", variant: "neutral" },
-      parts: [],
     };
 
-    if (onSubmit) {
-      onSubmit(newVehicleData);
+    try {
+      setIsSubmitting(true);
+      if (onSubmit) {
+        await onSubmit(vehiclePayload);
+      }
+      setFormData(EMPTY_FORM);
+      if (onClose) onClose();
+    } catch (err) {
+      setErrorMessage(err?.message || "Failed to save vehicle data.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setFormData({
-      nickname: "",
-      type: "Car",
-      brand: "",
-      model: "",
-      year: "",
-      plate: "",
-      tankCapacity: "",
-      initialOdometer: "",
-    });
-
-    if (onClose) onClose();
   };
 
   if (isOpen === false) return null;
@@ -117,7 +141,7 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
               </svg>
             </span>
             <h2 className="font-heading text-lg font-bold tracking-tight text-ink-primary">
-              Add New Vehicle
+              {isEditMode ? "Edit Vehicle" : "Add New Vehicle"}
             </h2>
           </div>
 
@@ -144,6 +168,12 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
             </button>
           )}
         </div>
+
+        {errorMessage && (
+          <div className="mb-4 rounded-lg border border-status-danger/40 bg-status-danger/15 p-3 font-mono text-xs text-status-danger">
+            {errorMessage}
+          </div>
+        )}
 
         {/* Form Fields */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -218,6 +248,25 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
             </div>
           </div>
 
+          {/* Nickname */}
+          <div>
+            <label
+              htmlFor="nickname"
+              className="mb-1.5 block font-mono text-[11px] font-bold tracking-wider text-ink-secondary uppercase"
+            >
+              Nickname (Optional)
+            </label>
+            <input
+              id="nickname"
+              name="nickname"
+              type="text"
+              value={formData.nickname}
+              onChange={handleChange}
+              placeholder="Pocket Rocket"
+              className="w-full rounded-lg border border-line-subtle bg-surface-base px-3.5 py-2.5 text-sm text-ink-primary placeholder:text-ink-muted focus:border-action focus:ring-1 focus:ring-action focus:outline-none"
+            />
+          </div>
+
           {/* Year & License Plate */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -230,10 +279,12 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
               <input
                 id="year"
                 name="year"
-                type="date"
+                type="number"
+                min="1900"
+                max="2100"
                 value={formData.year}
                 onChange={handleChange}
-                placeholder="2008"
+                placeholder="2022"
                 className="w-full rounded-lg border border-line-subtle bg-surface-base px-3.5 py-2.5 font-mono text-sm text-ink-primary placeholder:text-ink-muted focus:border-action focus:ring-1 focus:ring-action focus:outline-none"
               />
             </div>
@@ -256,7 +307,7 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
             </div>
           </div>
 
-          {/* Tank Capacity & Initial Odometer */}
+          {/* Tank Capacity & Initial/Current Odometer */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label
@@ -269,6 +320,9 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
                 <input
                   id="tankCapacity"
                   name="tankCapacity"
+                  type="number"
+                  step="0.1"
+                  min="0"
                   value={formData.tankCapacity}
                   onChange={handleChange}
                   placeholder="42"
@@ -285,16 +339,18 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
                 htmlFor="initialOdometer"
                 className="mb-1.5 block font-mono text-[11px] font-bold tracking-wider text-ink-secondary uppercase"
               >
-                Initial Odometer
+                {isEditMode ? "Current Odometer" : "Initial Odometer"}
               </label>
               <div className="relative">
                 <input
                   id="initialOdometer"
                   name="initialOdometer"
-                  type="text"
+                  type="number"
+                  min="0"
+                  required
                   value={formData.initialOdometer}
                   onChange={handleChange}
-                  placeholder="140.000"
+                  placeholder="36000"
                   className="w-full rounded-lg border border-line-subtle bg-surface-base py-2.5 pr-10 pl-3.5 font-mono text-sm text-ink-primary placeholder:text-ink-muted focus:border-action focus:ring-1 focus:ring-action focus:outline-none"
                 />
                 <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center font-mono text-xs text-ink-muted">
@@ -308,7 +364,8 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
           <div className="pt-2">
             <button
               type="submit"
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-action px-4 py-3 font-heading text-sm font-bold text-canvas shadow-md shadow-action/20 transition-all duration-200 hover:bg-action-hover active:scale-[0.99]"
+              disabled={isSubmitting}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-action px-4 py-3 font-heading text-sm font-bold text-canvas shadow-md shadow-action/20 transition-all duration-200 hover:bg-action-hover active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -323,7 +380,13 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
                 <circle cx="12" cy="12" r="10" />
                 <path d="m9 12 2 2 4-4" />
               </svg>
-              <span>Save New Vehicle</span>
+              <span>
+                {isSubmitting
+                  ? "Saving..."
+                  : isEditMode
+                    ? "Save Changes"
+                    : "Save New Vehicle"}
+              </span>
             </button>
           </div>
         </form>
@@ -331,4 +394,3 @@ export default function AddVehicleForm({ isOpen = true, onClose, onSubmit }) {
     </div>
   );
 }
-

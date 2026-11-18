@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Header from "@/components/shared/organisms/Header";
 import ServiceHero from "@/components/service-log/organisms/ServiceHero";
 import ServiceSummaryCard from "@/components/service-log/molecules/ServiceSummaryCard";
@@ -8,11 +8,8 @@ import ServiceTimelineTable from "@/components/service-log/organisms/ServiceTime
 import RecordServiceModal from "@/components/service-log/organisms/RecordServiceModal";
 import AddVehicleForm from "@/components/shared/organisms/AddVehicleForm";
 import Footer from "@/components/shared/organisms/Footer";
-import {
-  navLinks,
-  currentUser,
-  garageVehiclesData,
-} from "@/data/garageData";
+import { currentUser, navLinks } from "@/data/garageData";
+import { serviceLogsApi, vehiclesApi } from "@/lib/api";
 
 const numberID = new Intl.NumberFormat("id-ID");
 
@@ -22,11 +19,6 @@ const SERVICE_CATEGORIES = [
   { id: "Unscheduled Repair", label: "Unscheduled Repair" },
 ];
 
-/**
- * Bangun 3 kartu ringkasan servis berdasarkan riwayat servis yang terfilter
- * (Migrasi logika dari calculateTotalCost, updateLastServiceCard, dan
- * updateMostReplacedPartCard di GarasiiU/script.js).
- */
 function buildServiceSummaries(filteredHistory = [], activeCategory = "All") {
   const categoryLabel =
     activeCategory === "All" ? "All Categories" : activeCategory;
@@ -40,13 +32,11 @@ function buildServiceSummaries(filteredHistory = [], activeCategory = "All") {
       ? Math.round(totalCost / filteredHistory.length)
       : 0;
 
-  // Kartu 2: Last Service
   const latestService = filteredHistory[0] || null;
 
-  // Kartu 3: Most Replaced Part
   let mostReplacedName = "-";
   let maxCount = 0;
-  let latestWorkshop = "Tidak ada data komponen pada kategori ini";
+  let latestWorkshop = "There is no component data in this category";
 
   if (filteredHistory.length > 0) {
     const partCounts = {};
@@ -97,7 +87,7 @@ function buildServiceSummaries(filteredHistory = [], activeCategory = "All") {
       valueSize: "text-[32px]",
       subtitle: latestService
         ? `${latestService.workshop} • ${latestService.part}`
-        : "Belum ada riwayat servis pada kategori ini",
+        : "There is no service history in this category",
       footerLeft: "Odometer at service:",
       footerRight: latestService
         ? `${numberID.format(Number(latestService.odo))} km`
@@ -122,22 +112,142 @@ function buildServiceSummaries(filteredHistory = [], activeCategory = "All") {
 }
 
 export default function ServiceLogPage() {
-  const [vehicles, setVehicles] = useState(garageVehiclesData);
-  const [selectedVehicleId, setSelectedVehicleId] = useState(
-    garageVehiclesData[0].id
-  );
+  const [vehicles, setVehicles] = useState([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [serviceLogs, setServiceLogs] = useState([]);
   const [selectedTimeRange, setSelectedTimeRange] = useState("All Time");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState(null);
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
 
+  const loadVehicles = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+      const fetchedVehicles = await vehiclesApi.getAll();
+      setVehicles(fetchedVehicles);
+
+      if (fetchedVehicles.length > 0) {
+        const queryVehicleId =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("vehicleId")
+            : null;
+        const matched = fetchedVehicles.find((v) => v.id === queryVehicleId);
+        setSelectedVehicleId((prev) => {
+          if (matched) return matched.id;
+          if (prev && fetchedVehicles.some((v) => v.id === prev)) return prev;
+          return fetchedVehicles[0].id;
+        });
+      } else {
+        setSelectedVehicleId("");
+        setServiceLogs([]);
+      }
+    } catch (err) {
+      setErrorMessage(
+        err?.message ||
+          "Failed to load vehicle data. Ensure the NestJS backend server is running."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const loadLogsForVehicle = useCallback(async (vehicleId) => {
+    if (!vehicleId) {
+      setServiceLogs([]);
+      return;
+    }
+
+    try {
+      setErrorMessage("");
+      const [updatedVehicle, logs] = await Promise.all([
+        vehiclesApi.getOne(vehicleId),
+        serviceLogsApi.getAll(vehicleId),
+      ]);
+      setVehicles((prev) =>
+        prev.map((v) => (v.id === updatedVehicle.id ? updatedVehicle : v))
+      );
+      setServiceLogs(logs);
+    } catch (err) {
+      setErrorMessage(err?.message || "Failed to load service history.");
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchInitialVehicles() {
+      try {
+        const fetchedVehicles = await vehiclesApi.getAll();
+        if (!active) return;
+        setVehicles(fetchedVehicles);
+        setErrorMessage("");
+
+        if (fetchedVehicles.length > 0) {
+          const queryVehicleId =
+            typeof window !== "undefined"
+              ? new URLSearchParams(window.location.search).get("vehicleId")
+              : null;
+          const matched = fetchedVehicles.find((v) => v.id === queryVehicleId);
+          setSelectedVehicleId(matched ? matched.id : fetchedVehicles[0].id);
+        } else {
+          setSelectedVehicleId("");
+          setServiceLogs([]);
+        }
+      } catch (err) {
+        if (!active) return;
+        setErrorMessage(
+          err?.message ||
+            "Failed to load vehicle data. Ensure the NestJS backend server is running."
+        );
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    fetchInitialVehicles();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedVehicleId) return;
+    let active = true;
+
+    async function fetchVehicleLogs() {
+      try {
+        const [updatedVehicle, logs] = await Promise.all([
+          vehiclesApi.getOne(selectedVehicleId),
+          serviceLogsApi.getAll(selectedVehicleId),
+        ]);
+        if (!active) return;
+        setVehicles((prev) =>
+          prev.map((v) => (v.id === updatedVehicle.id ? updatedVehicle : v))
+        );
+        setServiceLogs(logs);
+        setErrorMessage("");
+      } catch (err) {
+        if (!active) return;
+        setErrorMessage(err?.message || "Failed to load service history.");
+      }
+    }
+
+    fetchVehicleLogs();
+    return () => {
+      active = false;
+    };
+  }, [selectedVehicleId]);
+
   const activeVehicle =
-    vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
+    vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0] || null;
 
-  const allVehicleServices = activeVehicle?.serviceHistory || [];
-
-  // Filter berdasarkan Time Range & Category
-  const filteredRecords = allVehicleServices.filter((item) => {
+  const filteredRecords = serviceLogs.filter((item) => {
     const matchesCategory =
       activeCategory === "All" || item.category === activeCategory;
     const matchesTime =
@@ -149,47 +259,52 @@ export default function ServiceLogPage() {
 
   const summaryCards = buildServiceSummaries(filteredRecords, activeCategory);
 
-  const handleAddService = (newServiceItem) => {
-    setVehicles((prev) =>
-      prev.map((vehicle) =>
-        vehicle.id === activeVehicle.id
-          ? {
-              ...vehicle,
-              odometer: Math.max(vehicle.odometer, newServiceItem.odo),
-              serviceStatus: "Healthy",
-              serviceHistory: [newServiceItem, ...vehicle.serviceHistory],
-            }
-          : vehicle
-      )
-    );
+  const handleOpenCreateService = () => {
+    if (!activeVehicle) {
+      setErrorMessage("Please add a vehicle first before recording a service.");
+      return;
+    }
+    setEditingService(null);
+    setIsServiceModalOpen(true);
   };
 
-  const handleDeleteService = (targetId) => {
-    setVehicles((prev) =>
-      prev.map((vehicle) =>
-        vehicle.id === activeVehicle.id
-          ? {
-              ...vehicle,
-              serviceHistory: vehicle.serviceHistory.filter(
-                (item) => item.id !== targetId
-              ),
-            }
-          : vehicle
-      )
-    );
+  const handleOpenEditService = (logId) => {
+    const target = serviceLogs.find((item) => item.id === logId) || null;
+    setEditingService(target);
+    setIsServiceModalOpen(true);
   };
 
-  const handleAddVehicle = (newVehicle) => {
-    const formattedVehicle = {
-      ...newVehicle,
-      category: newVehicle.type,
-      serviceStatus: newVehicle.status?.label || "Healthy",
-      claimEfficiency: 12.0,
-      fuelLogs: [],
-      serviceHistory: [],
-    };
-    setVehicles((prev) => [formattedVehicle, ...prev]);
-    setSelectedVehicleId(formattedVehicle.id);
+  const handleSaveService = async (servicePayload) => {
+    if (!activeVehicle) return;
+
+    if (editingService?.id) {
+      await serviceLogsApi.update(editingService.id, servicePayload);
+    } else {
+      await serviceLogsApi.create(activeVehicle.id, servicePayload);
+    }
+
+    await loadLogsForVehicle(activeVehicle.id);
+  };
+
+  const handleDeleteService = async (targetId) => {
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm("Delete this service history?");
+    if (!confirmed) return;
+
+    try {
+      setErrorMessage("");
+      await serviceLogsApi.remove(targetId);
+      await loadLogsForVehicle(activeVehicle?.id);
+    } catch (err) {
+      setErrorMessage(err?.message || "Failed to delete service history.");
+    }
+  };
+
+  const handleAddVehicle = async (formData) => {
+    const createdVehicle = await vehiclesApi.create(formData);
+    setVehicles((prev) => [createdVehicle, ...prev]);
+    setSelectedVehicleId(createdVehicle.id);
   };
 
   return (
@@ -204,60 +319,95 @@ export default function ServiceLogPage() {
       />
 
       <main className="flex flex-1 flex-col gap-6 px-4 py-6 md:gap-8 md:px-14 md:py-8">
-        {/* 1. Service Hero (Organism + VehicleSelector Molecule) */}
+        {errorMessage && (
+          <div className="flex items-center justify-between rounded-lg border border-status-danger/40 bg-status-danger/15 px-4 py-3 font-mono text-xs text-status-danger">
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={loadVehicles}
+              className="cursor-pointer rounded border border-status-danger/40 px-2.5 py-1 text-status-danger hover:bg-status-danger hover:text-canvas"
+            >
+              Refresh
+            </button>
+          </div>
+        )}
+
+        {/* 1. Service Hero */}
         <ServiceHero
           title="Service History"
           subtitle="Your vehicle's digital service passport: every repair and maintenance record, verified in one place"
           vehicles={vehicles}
-          selectedVehicleId={activeVehicle?.id}
+          selectedVehicleId={activeVehicle?.id || ""}
           onVehicleChange={setSelectedVehicleId}
           timeRanges={["All Time", "2026", "2025", "Last 6 Months"]}
           selectedTimeRange={selectedTimeRange}
           onTimeRangeChange={setSelectedTimeRange}
           onPrint={() => typeof window !== "undefined" && window.print()}
-          onRecordServiceClick={() => setIsServiceModalOpen(true)}
+          onRecordServiceClick={handleOpenCreateService}
           activeVehicleServiceStatus={activeVehicle?.serviceStatus}
         />
 
-        {/* 2. Service Summary Cards — Mapped via .map() to ServiceSummaryCard (Molecule) */}
-        <section
-          aria-label="Service summary metrics"
-          className="grid grid-cols-1 gap-6 md:grid-cols-3"
-        >
-          {summaryCards.map(({ id, ...cardProps }) => (
-            <ServiceSummaryCard key={id} {...cardProps} />
-          ))}
-        </section>
+        {isLoading ? (
+          <div className="rounded-xl border border-line-subtle bg-surface-raised/40 py-16 text-center font-mono text-xs text-ink-muted">
+            Loading data from the NestJS backend...
+          </div>
+        ) : !activeVehicle ? (
+          <div className="rounded-xl border border-dashed border-line-subtle bg-surface-raised/40 py-16 text-center font-mono text-xs text-ink-muted">
+            No vehicles in the garage yet. Click &quot;+ Add New Vehicle&quot; first to start recording service history.
+          </div>
+        ) : (
+          <>
+            {/* 2. Service Summary Cards */}
+            <section
+              aria-label="Service summary metrics"
+              className="grid grid-cols-1 gap-6 md:grid-cols-3"
+            >
+              {summaryCards.map(({ id, ...cardProps }) => (
+                <ServiceSummaryCard key={id} {...cardProps} />
+              ))}
+            </section>
 
-        {/* 3. Service Timeline Table (Organism + ServiceCategoryFilter & ServiceTableRow Molecules mapped via .map()) */}
-        <ServiceTimelineTable
-          title="Service Timeline"
-          records={filteredRecords}
-          totalRecordsCount={allVehicleServices.length}
-          categories={SERVICE_CATEGORIES}
-          activeCategory={activeCategory}
-          onCategoryChange={setActiveCategory}
-          onDeleteRecord={handleDeleteService}
-        />
+            {/* 3. Service Timeline Table */}
+            <ServiceTimelineTable
+              title="Service Timeline"
+              records={filteredRecords}
+              totalRecordsCount={serviceLogs.length}
+              categories={SERVICE_CATEGORIES}
+              activeCategory={activeCategory}
+              onCategoryChange={setActiveCategory}
+              onEditRecord={handleOpenEditService}
+              onDeleteRecord={handleDeleteService}
+            />
+          </>
+        )}
       </main>
 
-      {/* 4. Record New Service Modal (Organism) */}
-      <RecordServiceModal
-        isOpen={isServiceModalOpen}
-        onClose={() => setIsServiceModalOpen(false)}
-        onSubmit={handleAddService}
-        vehicleName={activeVehicle?.name}
-      />
+      {/* 4. Record / Edit Service Modal */}
+      {isServiceModalOpen && (
+        <RecordServiceModal
+          key={editingService?.id || "new-service"}
+          isOpen={isServiceModalOpen}
+          onClose={() => {
+            setIsServiceModalOpen(false);
+            setEditingService(null);
+          }}
+          onSubmit={handleSaveService}
+          vehicleName={activeVehicle?.name}
+          initialData={editingService}
+        />
+      )}
 
       {/* Add Vehicle Modal */}
-      <AddVehicleForm
-        isOpen={isVehicleModalOpen}
-        onClose={() => setIsVehicleModalOpen(false)}
-        onSubmit={handleAddVehicle}
-      />
+      {isVehicleModalOpen && (
+        <AddVehicleForm
+          key="service-page-new-vehicle"
+          isOpen={isVehicleModalOpen}
+          onClose={() => setIsVehicleModalOpen(false)}
+          onSubmit={handleAddVehicle}
+        />
+      )}
 
       <Footer />
     </>
   );
 }
-

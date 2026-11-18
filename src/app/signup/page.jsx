@@ -62,7 +62,7 @@ export default function SignupPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setFeedback("Akun GarasiU berhasil dibuat! Mengalihkan ke halaman Login...");
+    setFeedback("Garage account created successfully! Redirecting to login page...");
     setTimeout(() => {
       router.push("/login");
     }, 700);

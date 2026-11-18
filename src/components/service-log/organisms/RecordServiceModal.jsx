@@ -30,26 +30,50 @@ export function formatDateDisplay(dateStr) {
   return dateStr;
 }
 
+const EMPTY_SERVICE_FORM = {
+  date: "",
+  odo: "",
+  category: "Routine Maintenance",
+  workshop: "",
+  part: "",
+  cost: "",
+};
+
+function getInitialServiceForm(initialData) {
+  if (!initialData) return EMPTY_SERVICE_FORM;
+  return {
+    date: initialData.rawDate || "",
+    odo:
+      initialData.odo !== null && initialData.odo !== undefined
+        ? String(initialData.odo)
+        : "",
+    category: initialData.category || "Routine Maintenance",
+    workshop: initialData.workshop || "",
+    part: initialData.part || "",
+    cost:
+      initialData.cost !== null && initialData.cost !== undefined
+        ? String(initialData.cost)
+        : "",
+  };
+}
+
 /**
  * [Atomic Design: ORGANISM — Service Log]
- * RecordServiceModal — Migrasi dari `#formServiceContainer`, `#modalBackdrop`,
- * `#errorMsg`, dan `#serviceForm` pada `GarasiiU/serviceLog.html` & `GarasiiU/script.js`.
+ * RecordServiceModal — Modal form tambah & edit riwayat servis.
  */
 export default function RecordServiceModal({
   isOpen = false,
   onClose,
   onSubmit,
   vehicleName = "",
+  initialData = null,
 }) {
-  const [formData, setFormData] = useState({
-    date: "",
-    odo: "",
-    category: "Routine Maintenance",
-    workshop: "",
-    part: "",
-    cost: "",
-  });
-  const [showError, setShowError] = useState(false);
+  const isEditMode = Boolean(initialData?.id);
+  const [formData, setFormData] = useState(() =>
+    getInitialServiceForm(initialData)
+  );
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -59,11 +83,11 @@ export default function RecordServiceModal({
   };
 
   const handleCancel = () => {
-    setShowError(false);
+    setErrorMessage("");
     if (onClose) onClose();
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const { date, odo, category, workshop, part, cost } = formData;
 
@@ -75,35 +99,37 @@ export default function RecordServiceModal({
       !String(cost).trim() ||
       Number(cost) <= 0
     ) {
-      setShowError(true);
+      setErrorMessage(
+        "Alert: Please fill in all input fields (Date, Odometer, Category, Component, Workshop, and Cost) correctly!"
+      );
       return;
     }
 
-    const newServiceItem = {
-      id: Date.now(),
+    const servicePayload = {
+      ...(initialData || {}),
+      rawDate: date.trim(),
       date: formatDateDisplay(date.trim()),
       odo: Number(odo),
       category,
-      status: "Verified",
+      status: initialData?.status || "Verified",
       part: part.trim(),
       workshop: workshop.trim(),
       cost: Number(cost),
     };
 
-    if (onSubmit) {
-      onSubmit(newServiceItem);
+    try {
+      setIsSubmitting(true);
+      setErrorMessage("");
+      if (onSubmit) {
+        await onSubmit(servicePayload);
+      }
+      setFormData(EMPTY_SERVICE_FORM);
+      if (onClose) onClose();
+    } catch (err) {
+      setErrorMessage(err?.message || "Failed to save service record.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setFormData({
-      date: "",
-      odo: "",
-      category: "Routine Maintenance",
-      workshop: "",
-      part: "",
-      cost: "",
-    });
-    setShowError(false);
-    if (onClose) onClose();
   };
 
   return (
@@ -125,7 +151,8 @@ export default function RecordServiceModal({
             <div className="flex items-center gap-2">
               <Icon name="build_circle" size={20} className="text-action" />
               <h3 className="m-0 font-heading text-lg font-bold text-ink-primary">
-                Record New Service {vehicleName ? `— ${vehicleName}` : ""}
+                {isEditMode ? "Edit Service Record" : "Record New Service"}{" "}
+                {vehicleName ? `— ${vehicleName}` : ""}
               </h3>
             </div>
             <button
@@ -137,17 +164,14 @@ export default function RecordServiceModal({
             </button>
           </div>
 
-          {showError && (
+          {errorMessage && (
             <div
               id="errorMsg"
               className="mb-4 rounded border border-status-danger/40 bg-status-danger/15 p-3 font-mono text-xs text-status-danger"
             >
               <div className="flex items-center gap-2">
                 <Icon name="error" size={16} />
-                <span>
-                  Alert: Please fill in all input fields (Date, Odometer,
-                  Category, Component, Workshop, and Cost) correctly!
-                </span>
+                <span>{errorMessage}</span>
               </div>
             </div>
           )}
@@ -272,15 +296,22 @@ export default function RecordServiceModal({
                 onClick={handleCancel}
                 className="cursor-pointer rounded border border-line-subtle bg-surface-overlay px-4 py-2 font-heading text-sm font-semibold text-ink-secondary transition-colors hover:border-line-bright hover:text-ink-primary"
               >
-                Batal
+                Cancel
               </button>
               <button
                 type="submit"
                 id="btnSubmitService"
-                className="inline-flex cursor-pointer items-center gap-2 rounded border-0 bg-action px-5 py-2 font-heading text-sm font-semibold text-canvas transition-all hover:opacity-90"
+                disabled={isSubmitting}
+                className="inline-flex cursor-pointer items-center gap-2 rounded border-0 bg-action px-5 py-2 font-heading text-sm font-semibold text-canvas transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Icon name="save" size={18} />
-                <span>Simpan Data Servis</span>
+                <span>
+                  {isSubmitting
+                    ? "Saving..."
+                    : isEditMode
+                      ? "Save Changes"
+                      : "Save Service Record"}
+                </span>
               </button>
             </div>
           </form>
@@ -289,4 +320,3 @@ export default function RecordServiceModal({
     </div>
   );
 }
-

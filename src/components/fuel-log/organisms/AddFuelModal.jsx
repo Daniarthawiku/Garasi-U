@@ -263,14 +263,14 @@ export default function AddFuelModal({
               onClick={onClose}
               className="cursor-pointer rounded border border-line-subtle bg-surface-overlay px-4 py-2 font-heading text-sm font-semibold text-ink-secondary transition-colors hover:border-line-bright hover:text-ink-primary"
             >
-              Batal
+              Cancel
             </button>
             <button
               type="submit"
               className="inline-flex cursor-pointer items-center gap-2 rounded border-0 bg-action px-5 py-2 font-heading text-sm font-semibold text-canvas transition-all hover:opacity-90"
             >
               <Icon name="save" size={18} />
-              <span>Simpan Log BBM</span>
+              <span>Save Fuel Log</span>
             </button>
           </div>
         </form>

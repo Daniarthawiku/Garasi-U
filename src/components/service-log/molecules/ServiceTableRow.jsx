@@ -17,6 +17,7 @@ export default function ServiceTableRow({
   part,
   workshop,
   cost,
+  onEdit,
   onDelete,
 }) {
   return (
@@ -53,14 +54,24 @@ export default function ServiceTableRow({
       </td>
 
       <td className="px-4 py-3.5 text-center whitespace-nowrap">
-        <button
-          type="button"
-          onClick={() => onDelete && onDelete(id)}
-          className="inline-flex cursor-pointer items-center gap-1 rounded border border-status-danger/30 bg-status-danger/15 px-2.5 py-1 font-mono text-xs text-status-danger transition-colors hover:bg-status-danger hover:text-canvas"
-        >
-          <Icon name="delete" size={14} />
-          <span>Hapus</span>
-        </button>
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onEdit && onEdit(id)}
+            className="inline-flex cursor-pointer items-center gap-1 rounded border border-action/30 bg-action/10 px-2.5 py-1 font-mono text-xs text-action transition-colors hover:bg-action hover:text-canvas"
+          >
+            <Icon name="edit" size={14} />
+            <span>Edit</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete && onDelete(id)}
+            className="inline-flex cursor-pointer items-center gap-1 rounded border border-status-danger/30 bg-status-danger/15 px-2.5 py-1 font-mono text-xs text-status-danger transition-colors hover:bg-status-danger hover:text-canvas"
+          >
+            <Icon name="delete" size={14} />
+            <span>Delete</span>
+          </button>
+        </div>
       </td>
     </tr>
   );

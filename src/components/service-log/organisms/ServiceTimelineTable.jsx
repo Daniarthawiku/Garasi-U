@@ -15,6 +15,7 @@ export default function ServiceTimelineTable({
   categories,
   activeCategory = "All",
   onCategoryChange,
+  onEditRecord,
   onDeleteRecord,
 }) {
   return (
@@ -44,7 +45,7 @@ export default function ServiceTimelineTable({
               <th className="min-w-[280px] px-4 py-3">Work &amp; Parts</th>
               <th className="px-4 py-3">Workshop</th>
               <th className="px-4 py-3 text-right">Cost (Rp)</th>
-              <th className="px-4 py-3 text-center">Aksi</th>
+              <th className="px-4 py-3 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="font-mono text-[13px] text-ink-secondary">
@@ -54,7 +55,7 @@ export default function ServiceTimelineTable({
                   colSpan={7}
                   className="py-8 text-center font-mono text-xs text-ink-muted"
                 >
-                  Tidak ada data riwayat servis pada kategori ini.
+                  No service records found in this category.
                 </td>
               </tr>
             ) : (
@@ -69,6 +70,7 @@ export default function ServiceTimelineTable({
                   part={item.part}
                   workshop={item.workshop}
                   cost={item.cost}
+                  onEdit={onEditRecord}
                   onDelete={onDeleteRecord}
                 />
               ))

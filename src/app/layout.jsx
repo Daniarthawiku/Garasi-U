@@ -22,13 +22,13 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata = {
   title: "GarasiU - Dashboard",
   description:
-    "GarasiU: pantau kendaraan, konsumsi BBM, dan riwayat servis dalam satu dashboard.",
+    "GarasiU: track your vehicles, fuel consumption, and service history in one dashboard.",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html
-      lang="id"
+      lang="en"
       className={`${inter.variable} ${jetbrains.variable} ${jakarta.variable} h-full`}
     >
       <head>

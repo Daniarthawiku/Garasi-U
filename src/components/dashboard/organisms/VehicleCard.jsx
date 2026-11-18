@@ -56,6 +56,8 @@ export default function VehicleCard({
   costPerKm,
   status = { label: "Not Sync", variant: "neutral" },
   parts = [],
+  onEdit,
+  onDelete,
 }) {
   const currentVariant = status?.variant || "neutral";
   const currentStatusLabel = status?.label || "Not Sync";
@@ -156,7 +158,7 @@ export default function VehicleCard({
       <section className="mt-auto flex flex-col gap-2 border-t border-line-subtle pt-3 sm:flex-row sm:justify-between">
         <div className="flex flex-col gap-2 sm:flex-row">
           <Link
-            href="/service-log"
+            href={`/service-log?vehicleId=${encodeURIComponent(id)}`}
             className="cursor-pointer rounded border border-line-subtle bg-surface-overlay px-3 py-2 text-center font-heading text-sm font-semibold text-ink-primary no-underline transition-all duration-200 hover:border-line-bright active:scale-95"
           >
             Log Service
@@ -168,12 +170,22 @@ export default function VehicleCard({
             Log Fuel
           </Link>
         </div>
-        <button
-          type="button"
-          className="cursor-pointer rounded border border-action/20 bg-action/10 px-3 py-2 font-heading text-sm font-semibold text-action transition-all duration-200 hover:bg-action/20 active:scale-95"
-        >
-          Update Odometer
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => onEdit && onEdit(id)}
+            className="cursor-pointer rounded border border-action/20 bg-action/10 px-3 py-2 font-heading text-sm font-semibold text-action transition-all duration-200 hover:bg-action/20 active:scale-95"
+          >
+            Edit / Odometer
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete && onDelete(id)}
+            className="cursor-pointer rounded border border-status-danger/30 bg-status-danger/10 px-3 py-2 font-heading text-sm font-semibold text-status-danger transition-all duration-200 hover:bg-status-danger hover:text-canvas active:scale-95"
+          >
+            Delete
+          </button>
+        </div>
       </section>
     </article>
   );

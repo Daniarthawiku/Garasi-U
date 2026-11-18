@@ -44,7 +44,7 @@ export default function LoginPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setFeedback("Autentikasi berhasil! Mengalihkan ke Dashboard GarasiU...");
+    setFeedback("Authentication successful! Redirecting to Dashboard GarasiU...");
     setTimeout(() => {
       router.push("/");
     }, 600);
