@@ -48,3 +48,5 @@ AGENTS.md
 /backend/dist
 /backend/.env*
 !/backend/.env.example
+/backend/src/auth/dummy-account.local.json
+/backend/src/auth/*.local.*
