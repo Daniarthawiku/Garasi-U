@@ -9,13 +9,16 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard.js';
 import { CreateServiceLogDto } from './dto/create-service-log.dto.js';
 import { UpdateServiceLogDto } from './dto/update-service-log.dto.js';
 import { ServiceCategory } from './entities/service-log.entity.js';
 import { ServiceLogsService } from './service-logs.service.js';
 
 @Controller('service-logs')
+@UseGuards(AuthGuard)
 export class ServiceLogsController {
   constructor(private readonly serviceLogsService: ServiceLogsService) {}
 

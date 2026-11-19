@@ -1,3 +1,5 @@
+import type { FuelLog } from '../../fuel-logs/entities/fuel-log.entity.js';
+
 export enum VehicleType {
   CAR = 'CAR',
   MOTORCYCLE = 'MOTORCYCLE',
@@ -37,6 +39,7 @@ export class Vehicle {
   isActive: boolean;
   lastServiceDate: Date | null;
   parts: VehiclePart[];
+  fuelLogs?: FuelLog[];
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { vi } from 'vitest';
+import { AuthGuard } from '../auth/auth.guard.js';
 import { ServiceCategory } from './entities/service-log.entity.js';
 import { ServiceLogsController } from './service-logs.controller.js';
 import { ServiceLogsService } from './service-logs.service.js';
@@ -25,7 +26,10 @@ describe('ServiceLogsController', () => {
           useValue: mockServiceLogsService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(AuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<ServiceLogsController>(ServiceLogsController);
   });

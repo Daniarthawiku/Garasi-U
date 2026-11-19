@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { vi } from 'vitest';
+import { AuthGuard } from '../auth/auth.guard.js';
 import { VehicleType } from './entities/vehicle.entity.js';
 import { VehiclesController } from './vehicles.controller.js';
 import { VehiclesService } from './vehicles.service.js';
@@ -25,7 +26,10 @@ describe('VehiclesController', () => {
           useValue: mockVehiclesService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(AuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<VehiclesController>(VehiclesController);
   });

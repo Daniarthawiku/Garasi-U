@@ -7,12 +7,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard.js';
 import { CreateVehicleDto } from './dto/create-vehicle.dto.js';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto.js';
 import { VehiclesService } from './vehicles.service.js';
 
 @Controller('vehicles')
+@UseGuards(AuthGuard)
 export class VehiclesController {
   constructor(private readonly vehiclesService: VehiclesService) {}
 
