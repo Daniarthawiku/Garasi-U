@@ -8,12 +8,17 @@ import VehicleCard from "@/components/dashboard/organisms/VehicleCard";
 import AddVehicleForm from "@/components/shared/organisms/AddVehicleForm";
 import { getPartStatus } from "@/components/dashboard/atoms/PartProgressBar";
 import Footer from "@/components/shared/organisms/Footer";
-import { defaultProfile, navLinks } from "@/data/garageData";
+import { navLinks } from "@/data/garageData";
 import { authApi, fuelLogsApi, serviceLogsApi, vehiclesApi } from "@/lib/api";
 
 const numberID = new Intl.NumberFormat("id-ID");
 
-function buildMetrics(list = [], serviceLogs = [], fuelLogs = []) {
+function buildMetrics(
+  list = [],
+  serviceLogs = [],
+  fuelLogs = [],
+  currentMonthPrefix = ""
+) {
   const overdue = list.flatMap((v) =>
     (v.parts || [])
       .filter((p) => getPartStatus(p.wear) === "overdue")
@@ -41,67 +46,99 @@ function buildMetrics(list = [], serviceLogs = [], fuelLogs = []) {
         validFuelVehicles.length
       : 0;
 
+  const monthlyServiceLogs = currentMonthPrefix
+    ? serviceLogs.filter((log) =>
+        String(log.rawDate || "").startsWith(currentMonthPrefix)
+      )
+    : [];
+  const monthlyFuelLogs = currentMonthPrefix
+    ? fuelLogs.filter((log) =>
+        String(log.rawDate || "").startsWith(currentMonthPrefix)
+      )
+    : [];
+
+  const monthlySpend =
+    monthlyServiceLogs.reduce((sum, log) => sum + (Number(log.cost) || 0), 0) +
+    monthlyFuelLogs.reduce((sum, log) => sum + (Number(log.price) || 0), 0);
+
   const totalSpending =
     serviceLogs.reduce((sum, log) => sum + (Number(log.cost) || 0), 0) +
     fuelLogs.reduce((sum, log) => sum + (Number(log.price) || 0), 0);
 
-  return [
-    {
-      id: "vehicle-total",
-      label: "Vehicle Total",
-      icon: "directions_car",
-      iconVariant: "cyan",
-      value: list.length,
-      unit: "Units",
-      badge: { text: types, icon: "garage", variant: "neutral" },
-    },
-    {
-      id: "vehicle-status",
-      label: "Vehicle Status",
-      icon: overdue.length ? "warning" : "verified",
-      iconVariant: overdue.length ? "danger" : "optimal",
-      value: overdue.length,
-      unit: "Components Overdue",
-      valueVariant: overdue.length ? "danger" : "optimal",
-      badge: overdue.length
-        ? {
-            text: `${overdue[0].vehicle}: ${overdue[0].part}`,
-            icon: "warning",
-            variant: "danger",
-          }
-        : {
-            text: "All components healthy",
-            icon: "check_circle",
-            variant: "optimal",
-          },
-    },
-    {
-      id: "fuel-summary",
-      label: "Fuel Summary",
-      icon: "local_gas_station",
-      iconVariant: "cyan",
-      value: avgEfficiency.toFixed(2),
-      unit: "km/L",
+  const monthlyRecordsCount = monthlyServiceLogs.length + monthlyFuelLogs.length;
+
+  return {
+    overdueCount: overdue.length,
+    cards: [
+      {
+        id: "fleet-units",
+        label: "Fleet Units",
+        iconType: "fleet",
+        iconVariant: "cyan",
+        topAccent: "cyan",
+        value: list.length,
+        unit: list.length === 1 ? "Unit" : "Units",
+        badge: { text: types, variant: "neutral" },
+        className:
+          "bg-gradient-to-b from-[#161B22] to-[#0D1117] xl:col-span-3",
+      },
+      {
+        id: "avg-fuel-efficiency",
+        label: "Avg. Fuel Efficiency",
+        compactLabel: "Avg. Efficiency",
+        iconType: "fuel",
+        iconVariant: "cyan",
+        value: avgEfficiency.toFixed(2),
+        unit: "km/L",
         badge: {
-        text: "Average Consumption",
-        icon: "local_gas_station",
-        variant: "optimal",
+          text:
+            validFuelVehicles.length > 0
+              ? `${validFuelVehicles.length} unit(s) tracked`
+              : "No fuel logs",
+          variant: validFuelVehicles.length > 0 ? "optimal" : "neutral",
+        },
+        className: "xl:col-span-3",
       },
-    },
-    {
-      id: "total-spending",
-      label: "Total Spendings",
-      icon: "receipt_long",
-      iconVariant: "cyan",
-      prefix: "Rp",
-      value: numberID.format(totalSpending),
-      badge: {
-        text: `${serviceLogs.length} Service • ${fuelLogs.length} Fuel Records`,
-        icon: "receipt_long",
-        variant: "optimal",
+      {
+        id: "service-health",
+        label: "Service Health",
+        iconType: "health",
+        iconVariant: overdue.length ? "danger" : "optimal",
+        topAccent: overdue.length ? "danger" : "optimal",
+        value: overdue.length,
+        unit: "Overdue",
+        valueVariant: overdue.length ? "danger" : "optimal",
+        badge: overdue.length
+          ? {
+              text: `${overdue[0].vehicle}: ${overdue[0].part}`,
+              variant: "danger",
+            }
+          : {
+              text: list.length > 0 ? "Systems nominal" : "No units",
+              variant: list.length > 0 ? "optimal" : "neutral",
+            },
+        className: "xl:col-span-3",
       },
-    },
-  ];
+      {
+        id: "monthly-spend",
+        label: "Monthly Spend",
+        iconType: "spend",
+        iconVariant: "cyan",
+        prefix: "Rp",
+        value: numberID.format(monthlySpend),
+        badge: {
+          text:
+            monthlyRecordsCount > 0
+              ? `${monthlyServiceLogs.length} Svc | ${monthlyFuelLogs.length} Fuel`
+              : totalSpending > 0
+                ? `Total: Rp ${numberID.format(totalSpending)}`
+                : "0 logs this month",
+          variant: monthlySpend > 0 ? "optimal" : "neutral",
+        },
+        className: "xl:col-span-3",
+      },
+    ],
+  };
 }
 
 export default function DashboardPage() {
@@ -109,6 +146,7 @@ export default function DashboardPage() {
   const [vehicles, setVehicles] = useState([]);
   const [serviceLogs, setServiceLogs] = useState([]);
   const [fuelLogs, setFuelLogs] = useState([]);
+  const [currentMonthPrefix, setCurrentMonthPrefix] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -129,6 +167,10 @@ export default function DashboardPage() {
         serviceLogsApi.getAll(),
         fuelLogsApi.getAll(),
       ]);
+      const now = new Date();
+      setCurrentMonthPrefix(
+        `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+      );
       setAuthUser(fetchedUser);
       setVehicles(fetchedVehicles);
       setServiceLogs(fetchedServiceLogs);
@@ -160,6 +202,10 @@ export default function DashboardPage() {
           fuelLogsApi.getAll(),
         ]);
         if (!active) return;
+        const now = new Date();
+        setCurrentMonthPrefix(
+          `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+        );
         setAuthUser(fetchedUser);
         setVehicles(fetchedVehicles);
         setServiceLogs(fetchedServiceLogs);
@@ -255,49 +301,61 @@ export default function DashboardPage() {
     };
   });
 
-  const metrics = buildMetrics(vehiclesWithTelemetry, serviceLogs, fuelLogs);
+  const { overdueCount, cards: metrics } = buildMetrics(
+    vehiclesWithTelemetry,
+    serviceLogs,
+    fuelLogs,
+    currentMonthPrefix
+  );
 
   return (
     <>
       <Header
-        title="Welcome to GarasiU"
         navLinks={navLinks}
-        activeHref="/"
-        ctaLabel="+ Add New Vehicle"
+        ctaLabel="+ Add Vehicle"
         onCtaClick={handleOpenCreateModal}
-        profile={defaultProfile}
       />
 
-      <main className="flex-1">
-        <DashboardHero
-          userName={authUser?.name || "Owner"}
-          description="Welcome to GarasiU, your ultimate garage management solution. Keep track of your vehicles, fuel consumption, and service history all in one place."
+      <main className="relative flex-1 overflow-x-clip">
+        {/* Ambient radial cyan telemetry glow behind grid */}
+        <div
+          data-ambient-glow
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[440px] bg-[radial-gradient(ellipse_68%_58%_at_26%_0%,rgba(56,189,248,0.14),rgba(56,189,248,0.04)_52%,transparent_80%)]"
         />
 
-        {/* Metrics */}
-        <section
-          aria-label="Metrics summary"
-          className="mx-4 my-6 grid grid-cols-1 gap-6 sm:grid-cols-2 md:mx-14 md:my-8 xl:grid-cols-4"
-        >
-          {metrics.map(({ id, ...metric }) => (
-            <MetricWidget key={id} {...metric} />
-          ))}
-        </section>
+        <div className="relative z-10">
+          <DashboardHero
+            userName={authUser?.name || "Owner"}
+            vehicles={vehiclesWithTelemetry}
+            overdueCount={overdueCount}
+            isLoading={isLoading}
+          />
 
-        {/* Action Bar */}
-        <div className="mx-4 mb-4 flex items-center justify-between text-xs text-ink-muted md:mx-14">
-          <span className="font-mono">
-            Showing <strong className="text-ink-primary">{vehicles.length}</strong>{" "}
-            vehicle(s) from NestJS API
-          </span>
-          <button
-            type="button"
-            onClick={loadGarageData}
-            className="cursor-pointer rounded border border-line-subtle bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-action transition hover:border-action/40"
+          {/* Bento Telemetry Strip */}
+          <section
+            aria-label="Metrics summary"
+            className="mx-4 my-5 grid grid-cols-2 gap-3 sm:gap-4 md:mx-14 md:my-6 xl:grid-cols-12 xl:gap-5"
           >
-            Refresh Data
-          </button>
-        </div>
+            {metrics.map(({ id, ...metric }) => (
+              <MetricWidget key={id} isLoading={isLoading} {...metric} />
+            ))}
+          </section>
+
+          {/* Action Bar */}
+          <div className="mx-4 mb-4 flex items-center justify-between gap-3 text-xs text-ink-muted md:mx-14">
+            <span className="font-mono">
+              Showing <strong className="text-ink-primary">{vehicles.length}</strong>{" "}
+              vehicle(s) from NestJS API
+            </span>
+            <button
+              type="button"
+              onClick={loadGarageData}
+              className="shrink-0 cursor-pointer whitespace-nowrap rounded border border-line-subtle bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-action transition hover:border-action/40"
+            >
+              Refresh Data
+            </button>
+          </div>
 
         {errorMessage && (
           <div className="mx-4 mb-6 flex items-center justify-between rounded-lg border border-status-danger/40 bg-status-danger/15 px-4 py-3 font-mono text-xs text-status-danger md:mx-14">
@@ -367,6 +425,7 @@ export default function DashboardPage() {
             ))}
           </section>
         )}
+        </div>
       </main>
 
       {/* Add / Edit Vehicle Modal */}
