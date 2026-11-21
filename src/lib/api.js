@@ -121,6 +121,59 @@ export function mapBackendServiceLog(log) {
   };
 }
 
+export function mapBackendFuelLog(log, previousOdometer = null) {
+  const isoDate = log.refuelDate ? String(log.refuelDate).slice(0, 10) : "";
+  const formattedDate = formatIsoDateDisplay(isoDate);
+  const mileage =
+    typeof previousOdometer === "number" &&
+    log.odometerAtRefuel >= previousOdometer
+      ? log.odometerAtRefuel - previousOdometer
+      : null;
+
+  return {
+    id: log.id,
+    vehicleId: log.vehicleId,
+    rawDate: isoDate,
+    date: formattedDate,
+    shortDate: formattedDate.split(" ").slice(0, 2).join(" "),
+    odometer: log.odometerAtRefuel,
+    mileage,
+    fuelType: log.fuelType,
+    fuelOctaneVariant:
+      log.fuelType === "Pertalite" || log.fuelType === "Dexlite"
+        ? "warning"
+        : "accent",
+    volume: Number(log.liters) || 0,
+    price: Number(log.totalCost) || 0,
+    efficiency:
+      log.fuelEfficiency !== null && log.fuelEfficiency !== undefined
+        ? Number(log.fuelEfficiency)
+        : null,
+    isFullTank: Boolean(log.isFullTank),
+    status: log.isFullTank ? "Full Tank" : "Partial Fill",
+  };
+}
+
+export function toFuelLogPayload(formData, vehicleId) {
+  const payload = {
+    fuelType: String(formData.fuelType || "").trim(),
+    liters: Number(formData.volume ?? formData.liters) || 0,
+    totalCost: Number(formData.price ?? formData.totalCost) || 0,
+    odometerAtRefuel: Number(formData.odometer ?? formData.odometerAtRefuel) || 0,
+    isFullTank:
+      typeof formData.isFullTank === "boolean"
+        ? formData.isFullTank
+        : formData.status === "Full Tank",
+    refuelDate: formData.rawDate || formData.date,
+  };
+
+  if (vehicleId) {
+    payload.vehicleId = vehicleId;
+  }
+
+  return payload;
+}
+
 export function toCreateVehiclePayload(formData) {
   const payload = {
     brand: String(formData.brand || "").trim(),
@@ -200,6 +253,7 @@ export function toServiceLogPayload(formData, vehicleId) {
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -216,6 +270,12 @@ async function request(path, options = {}) {
     }
   }
 
+  if (response.status === 401 && typeof window !== "undefined") {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.assign("/auth");
+    throw new Error("Session expired or unauthorized. Redirecting to login...");
+  }
+
   if (!response.ok) {
     const message = Array.isArray(data?.message)
       ? data.message.join(", ")
@@ -225,6 +285,49 @@ async function request(path, options = {}) {
 
   return data;
 }
+
+export const authApi = {
+  async login({ email, password, rememberMe = false }) {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, rememberMe }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.message || "Invalid email or password");
+    }
+    return data;
+  },
+  async signup({ fullName, email, primaryVehicle, password }) {
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fullName, email, primaryVehicle, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.message || "Failed to create account");
+    }
+    return data;
+  },
+  async logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+  },
+  async me() {
+    const res = await fetch("/api/auth/me", { credentials: "include" });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401 && typeof window !== "undefined") {
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+      window.location.assign("/auth");
+      throw new Error("Session expired or unauthorized.");
+    }
+    if (!res.ok) {
+      throw new Error(data?.message || "Failed to load user profile");
+    }
+    return data.user || null;
+  },
+};
 
 export const vehiclesApi = {
   async getAll() {
@@ -284,6 +387,49 @@ export const serviceLogsApi = {
   },
   async remove(id) {
     return request(`/service-logs/${id}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+export const fuelLogsApi = {
+  async getAll(vehicleId) {
+    const query = vehicleId
+      ? `?vehicleId=${encodeURIComponent(vehicleId)}`
+      : "";
+    const data = await request(`/fuel-logs${query}`);
+    if (!Array.isArray(data)) return [];
+
+    // Hitung selisih jarak (mileage) antar pengisian per kendaraan (data terurut terbaru ke terlama)
+    return data.map((log, index) => {
+      let prevOdo = null;
+      for (let j = index + 1; j < data.length; j += 1) {
+        if (data[j].vehicleId === log.vehicleId) {
+          prevOdo = data[j].odometerAtRefuel;
+          break;
+        }
+      }
+      return mapBackendFuelLog(log, prevOdo);
+    });
+  },
+  async create(vehicleId, formData) {
+    const payload = toFuelLogPayload(formData, vehicleId);
+    const data = await request("/fuel-logs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return mapBackendFuelLog(data);
+  },
+  async update(id, formData) {
+    const payload = toFuelLogPayload(formData);
+    const data = await request(`/fuel-logs/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    return mapBackendFuelLog(data);
+  },
+  async remove(id) {
+    return request(`/fuel-logs/${id}`, {
       method: "DELETE",
     });
   },

@@ -14,7 +14,10 @@ export default function FuelEfficiencyChart({
   yAxisLabels = ["13 km/L", "12 km/L", "11 km/L", "10 km/L"],
   dataPoints = [],
 }) {
-  const chartPoints = [...dataPoints].reverse();
+  const validPoints = dataPoints.filter(
+    (d) => typeof d.efficiency === "number" && d.efficiency > 0
+  );
+  const chartPoints = [...validPoints].reverse();
   const values = chartPoints.map((d) => Number(d.efficiency) || 0);
   const minVal = values.length ? Math.floor(Math.min(...values) - 1) : 10;
   const maxVal = values.length ? Math.ceil(Math.max(...values) + 1) : 13;

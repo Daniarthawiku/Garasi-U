@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import AuthCard from "@/components/auth/organisms/AuthCard";
 import SupportedBrands from "@/components/auth/SupportedBrands";
+import { authApi } from "@/lib/api";
 
 const SIGNUP_FIELDS = [
   {
@@ -20,7 +20,7 @@ const SIGNUP_FIELDS = [
     name: "email",
     label: "Fill your Email",
     type: "email",
-    placeholder: "karlbenz@gmail.com",
+    placeholder: "owner@example.com",
     icon: "alternate_email",
     required: true,
   },
@@ -45,7 +45,6 @@ const SIGNUP_FIELDS = [
 ];
 
 export default function SignupPage() {
-  const router = useRouter();
   const [formValues, setFormValues] = useState({
     fullName: "",
     email: "",
@@ -54,18 +53,34 @@ export default function SignupPage() {
   });
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [feedback, setFeedback] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleFieldChange = (e) => {
     const { name, value } = e.target;
     setFormValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setFeedback("Garage account created successfully! Redirecting to login page...");
-    setTimeout(() => {
-      router.push("/login");
-    }, 700);
+    setErrorMessage("");
+    setFeedback("");
+
+    if (!agreeTerms) {
+      setErrorMessage("Please accept the service passport terms to continue.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await authApi.signup(formValues);
+      setFeedback("Garage account created! Redirecting to GarasiU Dashboard...");
+      window.location.assign("/");
+    } catch (err) {
+      setErrorMessage(err?.message || "Failed to register garage account");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -89,6 +104,8 @@ export default function SignupPage() {
           footerLinkLabel="Sign In Here"
           footerLinkHref="/login"
           feedbackMessage={feedback}
+          errorMessage={errorMessage}
+          isSubmitting={isSubmitting}
         />
       </main>
 
@@ -96,4 +113,3 @@ export default function SignupPage() {
     </div>
   );
 }
-

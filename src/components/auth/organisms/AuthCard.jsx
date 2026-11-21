@@ -42,12 +42,21 @@ export default function AuthCard({
   onFooterLinkClick,
   vehicles = [],
   feedbackMessage = "",
+  errorMessage = "",
+  isSubmitting = false,
 }) {
   return (
     <div className="w-full max-w-[480px] rounded border border-line-subtle bg-surface-base p-8 shadow-card-auth">
       <AuthCardHeader badgeText={badgeText} gatewayText={gatewayText} />
 
       <AuthCardTitle title={title} subtitle={subtitle} />
+
+      {errorMessage && (
+        <div className="mb-4 flex items-center gap-2 rounded border border-status-danger/40 bg-status-danger/15 px-3 py-2 font-mono text-xs text-status-danger">
+          <Icon name="error" size={16} />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {feedbackMessage && (
         <div className="mb-4 flex items-center gap-2 rounded border border-action/30 bg-action/10 px-3 py-2 font-mono text-xs text-action">
@@ -85,7 +94,12 @@ export default function AuthCard({
           />
         )}
 
-        <AuthSubmitButton label={submitLabel} icon={submitIcon} type="submit" />
+        <AuthSubmitButton
+          label={isSubmitting ? "Authenticating..." : submitLabel}
+          icon={submitIcon}
+          type="submit"
+          disabled={isSubmitting}
+        />
       </form>
 
       {/* Telemetry Garage Preview (Mapped Vehicle & Service Status via .map()) */}

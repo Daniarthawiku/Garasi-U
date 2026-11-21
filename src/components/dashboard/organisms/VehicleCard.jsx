@@ -164,7 +164,7 @@ export default function VehicleCard({
             Log Service
           </Link>
           <Link
-            href="/fuel-log"
+            href={`/fuel-log?vehicleId=${encodeURIComponent(id)}`}
             className="cursor-pointer rounded border border-line-subtle bg-surface-overlay px-3 py-2 text-center font-heading text-sm font-semibold text-ink-primary no-underline transition-all duration-200 hover:border-line-bright active:scale-95"
           >
             Log Fuel

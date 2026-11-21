@@ -8,12 +8,12 @@ import VehicleCard from "@/components/dashboard/organisms/VehicleCard";
 import AddVehicleForm from "@/components/shared/organisms/AddVehicleForm";
 import { getPartStatus } from "@/components/dashboard/atoms/PartProgressBar";
 import Footer from "@/components/shared/organisms/Footer";
-import { currentUser, navLinks } from "@/data/garageData";
-import { serviceLogsApi, vehiclesApi } from "@/lib/api";
+import { defaultProfile, navLinks } from "@/data/garageData";
+import { authApi, fuelLogsApi, serviceLogsApi, vehiclesApi } from "@/lib/api";
 
 const numberID = new Intl.NumberFormat("id-ID");
 
-function buildMetrics(list = [], serviceLogs = []) {
+function buildMetrics(list = [], serviceLogs = [], fuelLogs = []) {
   const overdue = list.flatMap((v) =>
     (v.parts || [])
       .filter((p) => getPartStatus(p.wear) === "overdue")
@@ -41,10 +41,9 @@ function buildMetrics(list = [], serviceLogs = []) {
         validFuelVehicles.length
       : 0;
 
-  const totalSpending = serviceLogs.reduce(
-    (sum, log) => sum + (Number(log.cost) || 0),
-    0
-  );
+  const totalSpending =
+    serviceLogs.reduce((sum, log) => sum + (Number(log.cost) || 0), 0) +
+    fuelLogs.reduce((sum, log) => sum + (Number(log.price) || 0), 0);
 
   return [
     {
@@ -97,7 +96,7 @@ function buildMetrics(list = [], serviceLogs = []) {
       prefix: "Rp",
       value: numberID.format(totalSpending),
       badge: {
-        text: `${serviceLogs.length} Service Records`,
+        text: `${serviceLogs.length} Service • ${fuelLogs.length} Fuel Records`,
         icon: "receipt_long",
         variant: "optimal",
       },
@@ -106,8 +105,10 @@ function buildMetrics(list = [], serviceLogs = []) {
 }
 
 export default function DashboardPage() {
+  const [authUser, setAuthUser] = useState(null);
   const [vehicles, setVehicles] = useState([]);
   const [serviceLogs, setServiceLogs] = useState([]);
+  const [fuelLogs, setFuelLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -117,12 +118,21 @@ export default function DashboardPage() {
     try {
       setIsLoading(true);
       setErrorMessage("");
-      const [fetchedVehicles, fetchedLogs] = await Promise.all([
+      const [
+        fetchedUser,
+        fetchedVehicles,
+        fetchedServiceLogs,
+        fetchedFuelLogs,
+      ] = await Promise.all([
+        authApi.me(),
         vehiclesApi.getAll(),
         serviceLogsApi.getAll(),
+        fuelLogsApi.getAll(),
       ]);
+      setAuthUser(fetchedUser);
       setVehicles(fetchedVehicles);
-      setServiceLogs(fetchedLogs);
+      setServiceLogs(fetchedServiceLogs);
+      setFuelLogs(fetchedFuelLogs);
     } catch (err) {
       setErrorMessage(
         err?.message ||
@@ -138,13 +148,22 @@ export default function DashboardPage() {
 
     async function fetchInitialData() {
       try {
-        const [fetchedVehicles, fetchedLogs] = await Promise.all([
+        const [
+          fetchedUser,
+          fetchedVehicles,
+          fetchedServiceLogs,
+          fetchedFuelLogs,
+        ] = await Promise.all([
+          authApi.me(),
           vehiclesApi.getAll(),
           serviceLogsApi.getAll(),
+          fuelLogsApi.getAll(),
         ]);
         if (!active) return;
+        setAuthUser(fetchedUser);
         setVehicles(fetchedVehicles);
-        setServiceLogs(fetchedLogs);
+        setServiceLogs(fetchedServiceLogs);
+        setFuelLogs(fetchedFuelLogs);
         setErrorMessage("");
       } catch (err) {
         if (!active) return;
@@ -202,12 +221,41 @@ export default function DashboardPage() {
       await vehiclesApi.remove(vehicleId);
       setVehicles((prev) => prev.filter((v) => v.id !== vehicleId));
       setServiceLogs((prev) => prev.filter((l) => l.vehicleId !== vehicleId));
+      setFuelLogs((prev) => prev.filter((l) => l.vehicleId !== vehicleId));
     } catch (err) {
       setErrorMessage(err?.message || "Failed to delete vehicle.");
     }
   };
 
-  const metrics = buildMetrics(vehicles, serviceLogs);
+  const vehiclesWithTelemetry = vehicles.map((vehicle) => {
+    const vFuelLogs = fuelLogs.filter((l) => l.vehicleId === vehicle.id);
+    const vServiceLogs = serviceLogs.filter((l) => l.vehicleId === vehicle.id);
+    const validEff = vFuelLogs.filter(
+      (l) => typeof l.efficiency === "number" && l.efficiency > 0
+    );
+    const avgFuelEff =
+      validEff.length > 0
+        ? validEff.reduce((s, l) => s + l.efficiency, 0) / validEff.length
+        : null;
+
+    const trackedKm = vFuelLogs.reduce(
+      (s, l) => s + (typeof l.mileage === "number" ? l.mileage : 0),
+      0
+    );
+    const totalVehicleSpend =
+      vFuelLogs.reduce((s, l) => s + (Number(l.price) || 0), 0) +
+      vServiceLogs.reduce((s, l) => s + (Number(l.cost) || 0), 0);
+    const estimatedCostPerKm =
+      trackedKm > 0 ? Math.round(totalVehicleSpend / trackedKm) : null;
+
+    return {
+      ...vehicle,
+      fuelEfficiency: avgFuelEff,
+      costPerKm: estimatedCostPerKm,
+    };
+  });
+
+  const metrics = buildMetrics(vehiclesWithTelemetry, serviceLogs, fuelLogs);
 
   return (
     <>
@@ -217,12 +265,12 @@ export default function DashboardPage() {
         activeHref="/"
         ctaLabel="+ Add New Vehicle"
         onCtaClick={handleOpenCreateModal}
-        profile={currentUser.avatar}
+        profile={defaultProfile}
       />
 
       <main className="flex-1">
         <DashboardHero
-          userName={currentUser.name}
+          userName={authUser?.name || "Owner"}
           description="Welcome to GarasiU, your ultimate garage management solution. Keep track of your vehicles, fuel consumption, and service history all in one place."
         />
 
@@ -300,7 +348,7 @@ export default function DashboardPage() {
             aria-label="Vehicle list"
             className="grid grid-cols-1 gap-6 px-4 md:px-14 lg:grid-cols-2"
           >
-            {vehicles.map((vehicle) => (
+            {vehiclesWithTelemetry.map((vehicle) => (
               <VehicleCard
                 key={vehicle.id}
                 id={vehicle.id}

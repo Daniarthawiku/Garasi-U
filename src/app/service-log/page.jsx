@@ -8,7 +8,7 @@ import ServiceTimelineTable from "@/components/service-log/organisms/ServiceTime
 import RecordServiceModal from "@/components/service-log/organisms/RecordServiceModal";
 import AddVehicleForm from "@/components/shared/organisms/AddVehicleForm";
 import Footer from "@/components/shared/organisms/Footer";
-import { currentUser, navLinks } from "@/data/garageData";
+import { defaultProfile, navLinks } from "@/data/garageData";
 import { serviceLogsApi, vehiclesApi } from "@/lib/api";
 
 const numberID = new Intl.NumberFormat("id-ID");
@@ -315,7 +315,7 @@ export default function ServiceLogPage() {
         activeHref="/service-log"
         ctaLabel="+ Add New Vehicle"
         onCtaClick={() => setIsVehicleModalOpen(true)}
-        profile={currentUser.avatar}
+        profile={defaultProfile}
       />
 
       <main className="flex flex-1 flex-col gap-6 px-4 py-6 md:gap-8 md:px-14 md:py-8">

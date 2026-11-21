@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import AuthCard from "@/components/auth/organisms/AuthCard";
 import SupportedBrands from "@/components/auth/SupportedBrands";
+import { authApi } from "@/lib/api";
 
 const LOGIN_FIELDS = [
   {
@@ -11,7 +11,7 @@ const LOGIN_FIELDS = [
     name: "identifier",
     label: "Fill your Email",
     type: "email",
-    placeholder: "karlbenz@gmail.com",
+    placeholder: "owner@example.com",
     icon: "alternate_email",
     required: true,
   },
@@ -28,26 +28,49 @@ const LOGIN_FIELDS = [
   },
 ];
 
+function getSafeNextPath() {
+  if (typeof window === "undefined") return "/";
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (next && next.startsWith("/") && !next.startsWith("//")) {
+    return next;
+  }
+  return "/";
+}
+
 export default function LoginPage() {
-  const router = useRouter();
   const [formValues, setFormValues] = useState({
     identifier: "",
     password: "",
   });
   const [rememberMe, setRememberMe] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleFieldChange = (e) => {
     const { name, value } = e.target;
     setFormValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setFeedback("Authentication successful! Redirecting to Dashboard GarasiU...");
-    setTimeout(() => {
-      router.push("/");
-    }, 600);
+    setErrorMessage("");
+    setFeedback("");
+
+    try {
+      setIsSubmitting(true);
+      await authApi.login({
+        email: formValues.identifier,
+        password: formValues.password,
+        rememberMe,
+      });
+      setFeedback("Authentication successful! Redirecting to GarasiU Dashboard...");
+      window.location.assign(getSafeNextPath());
+    } catch (err) {
+      setErrorMessage(err?.message || "Invalid email or password");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -71,6 +94,8 @@ export default function LoginPage() {
           footerLinkLabel="Create New"
           footerLinkHref="/signup"
           feedbackMessage={feedback}
+          errorMessage={errorMessage}
+          isSubmitting={isSubmitting}
         />
       </main>
 

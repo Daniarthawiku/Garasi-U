@@ -15,6 +15,8 @@ export default function FuelLogTable({
   activeFilter = "ALL",
   onFilterChange,
   onExportCsv,
+  onEditRecord,
+  onDeleteRecord,
   optimalThreshold = 11.5,
 }) {
   return (
@@ -78,13 +80,14 @@ export default function FuelLogTable({
               <th className="px-4 py-3 text-right font-semibold">Price (Rp)</th>
               <th className="px-4 py-3 text-right font-semibold">Efficiency</th>
               <th className="px-4 py-3 text-center font-semibold">Status</th>
+              <th className="px-4 py-3 text-center font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="font-mono text-[13px]">
             {logs.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="py-8 text-center font-mono text-xs text-ink-muted"
                 >
                   No fuel log records found for this filter yet.
@@ -94,6 +97,7 @@ export default function FuelLogTable({
               logs.map((log, index) => (
                 <FuelLogRow
                   key={log.id}
+                  id={log.id}
                   date={log.date}
                   odometer={log.odometer}
                   mileage={log.mileage}
@@ -103,10 +107,13 @@ export default function FuelLogTable({
                   price={log.price}
                   efficiency={log.efficiency}
                   isOptimalEfficiency={
-                    Number(log.efficiency) >= optimalThreshold
+                    typeof log.efficiency === "number" &&
+                    log.efficiency >= optimalThreshold
                   }
                   status={log.status}
                   isLatest={index === 0}
+                  onEdit={onEditRecord}
+                  onDelete={onDeleteRecord}
                 />
               ))
             )}

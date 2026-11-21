@@ -3,52 +3,67 @@
 import { useState } from "react";
 import Icon from "@/components/shared/atoms/Icon";
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
+const FUEL_TYPES = [
+  "Pertalite",
+  "Pertamax",
+  "Pertamax Green 95",
+  "Pertamax Turbo",
+  "Shell Super",
+  "Shell V-Power",
+  "BP 92",
+  "BP Ultimate",
+  "Dexlite",
+  "Pertamina Dex",
 ];
 
-function formatDateID(dateStr) {
-  if (!dateStr) return "";
-  const parts = dateStr.split("-");
-  if (parts.length === 3) {
-    const [year, month, day] = parts;
-    return `${day} ${MONTHS[parseInt(month, 10) - 1]} ${year}`;
-  }
-  return dateStr;
+const EMPTY_FUEL_FORM = {
+  date: "",
+  odometer: "",
+  fuelType: "Pertamax",
+  volume: "",
+  price: "",
+  status: "Full Tank",
+};
+
+function getInitialFuelForm(initialData) {
+  if (!initialData) return EMPTY_FUEL_FORM;
+  return {
+    date: initialData.rawDate || "",
+    odometer:
+      initialData.odometer !== null && initialData.odometer !== undefined
+        ? String(initialData.odometer)
+        : "",
+    fuelType: initialData.fuelType || "Pertamax",
+    volume:
+      initialData.volume !== null && initialData.volume !== undefined
+        ? String(initialData.volume)
+        : "",
+    price:
+      initialData.price !== null && initialData.price !== undefined
+        ? String(initialData.price)
+        : "",
+    status: initialData.status || "Full Tank",
+  };
 }
 
 /**
  * [Atomic Design: ORGANISM — Fuel Log]
- * AddFuelModal — Modal form interaktif untuk tombol `+ Update Fuel` (`openModal()`)
- * pada `GarasiiU/fuelLog.html`.
+ * AddFuelModal — Modal form for adding and editing fuel fill-up records.
  */
 export default function AddFuelModal({
   isOpen = false,
   onClose,
   onSubmit,
   vehicleName = "",
-  lastOdometer = 142850,
+  lastOdometer = 0,
+  initialData = null,
 }) {
-  const [formData, setFormData] = useState({
-    date: "",
-    odometer: "",
-    fuelType: "Pertamax RON 92",
-    volume: "",
-    price: "",
-    status: "Full Tank",
-  });
-  const [error, setError] = useState(false);
+  const isEditMode = Boolean(initialData?.id);
+  const [formData, setFormData] = useState(() =>
+    getInitialFuelForm(initialData)
+  );
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -57,48 +72,51 @@ export default function AddFuelModal({
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     const odoNum = Number(formData.odometer);
     const volNum = Number(formData.volume);
     const priceNum = Number(formData.price);
 
-    if (!formData.date || !odoNum || !volNum || !priceNum || volNum <= 0) {
-      setError(true);
+    if (
+      !formData.date ||
+      Number.isNaN(odoNum) ||
+      odoNum < 0 ||
+      !volNum ||
+      volNum <= 0 ||
+      !priceNum ||
+      priceNum < 1000
+    ) {
+      setErrorMessage(
+        "Please fill in all fields (Date, Odometer >= 0, Volume > 0, and Total Price >= Rp 1.000)!"
+      );
       return;
     }
 
-    const mileageDiff = Math.max(odoNum - lastOdometer, 50);
-    const efficiency = Number((mileageDiff / volNum).toFixed(2));
-    const formattedDate = formatDateID(formData.date);
-
-    const newLog = {
-      id: `fuel-${Date.now()}`,
-      date: formattedDate,
-      shortDate: formattedDate.split(" ").slice(0, 2).join(" "),
+    const payload = {
+      ...(initialData || {}),
+      rawDate: formData.date,
       odometer: odoNum,
-      mileage: mileageDiff,
       fuelType: formData.fuelType,
-      fuelOctaneVariant: formData.fuelType.includes("90")
-        ? "warning"
-        : "accent",
       volume: volNum,
       price: priceNum,
-      efficiency,
+      isFullTank: formData.status === "Full Tank",
       status: formData.status,
     };
 
-    if (onSubmit) onSubmit(newLog);
-    setFormData({
-      date: "",
-      odometer: "",
-      fuelType: "Pertamax RON 92",
-      volume: "",
-      price: "",
-      status: "Full Tank",
-    });
-    setError(false);
-    if (onClose) onClose();
+    try {
+      setIsSubmitting(true);
+      setErrorMessage("");
+      if (onSubmit) {
+        await onSubmit(payload);
+      }
+      setFormData(EMPTY_FUEL_FORM);
+      if (onClose) onClose();
+    } catch (err) {
+      setErrorMessage(err?.message || "Failed to save fuel log.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -115,7 +133,8 @@ export default function AddFuelModal({
           <div className="flex items-center gap-2">
             <Icon name="local_gas_station" size={20} className="text-action" />
             <h3 className="font-heading text-lg font-bold text-ink-primary">
-              Record Fuel Fill-Up {vehicleName ? `— ${vehicleName}` : ""}
+              {isEditMode ? "Edit Fuel Fill-Up" : "Record Fuel Fill-Up"}{" "}
+              {vehicleName ? `— ${vehicleName}` : ""}
             </h3>
           </div>
           <button
@@ -127,13 +146,10 @@ export default function AddFuelModal({
           </button>
         </div>
 
-        {error && (
+        {errorMessage && (
           <div className="mb-4 flex items-center gap-2 rounded border border-status-danger/40 bg-status-danger/15 p-3 font-mono text-xs text-status-danger">
             <Icon name="error" size={16} />
-            <span>
-              Please fill in all fields (Date, Odometer, Volume, and Total
-              Price) with valid numbers!
-            </span>
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -169,7 +185,8 @@ export default function AddFuelModal({
               id="fuelOdometer"
               name="odometer"
               type="number"
-              placeholder={`Example: ${lastOdometer + 350}`}
+              min="0"
+              placeholder={`Example: ${Number(lastOdometer || 0) + 350}`}
               value={formData.odometer}
               onChange={handleChange}
               className="rounded border border-line-subtle bg-canvas px-3 py-2 font-mono text-xs text-ink-primary placeholder:text-ink-muted focus:border-action focus:outline-none"
@@ -190,14 +207,11 @@ export default function AddFuelModal({
               onChange={handleChange}
               className="rounded border border-line-subtle bg-canvas px-3 py-2 font-mono text-xs text-ink-primary focus:border-action focus:outline-none"
             >
-              <option value="Shell V-Power Nitro+ RON 98">
-                Shell V-Power Nitro+ RON 98
-              </option>
-              <option value="Pertamax Turbo RON 98">
-                Pertamax Turbo RON 98
-              </option>
-              <option value="Pertamax RON 92">Pertamax RON 92</option>
-              <option value="Pertalite RON 90">Pertalite RON 90</option>
+              {FUEL_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -232,6 +246,7 @@ export default function AddFuelModal({
               name="volume"
               type="number"
               step="0.01"
+              min="0.01"
               placeholder="Example: 32.50"
               value={formData.volume}
               onChange={handleChange}
@@ -250,6 +265,7 @@ export default function AddFuelModal({
               id="fuelPrice"
               name="price"
               type="number"
+              min="1000"
               placeholder="Example: 422500"
               value={formData.price}
               onChange={handleChange}
@@ -267,10 +283,17 @@ export default function AddFuelModal({
             </button>
             <button
               type="submit"
-              className="inline-flex cursor-pointer items-center gap-2 rounded border-0 bg-action px-5 py-2 font-heading text-sm font-semibold text-canvas transition-all hover:opacity-90"
+              disabled={isSubmitting}
+              className="inline-flex cursor-pointer items-center gap-2 rounded border-0 bg-action px-5 py-2 font-heading text-sm font-semibold text-canvas transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Icon name="save" size={18} />
-              <span>Save Fuel Log</span>
+              <span>
+                {isSubmitting
+                  ? "Saving..."
+                  : isEditMode
+                    ? "Save Changes"
+                    : "Save Fuel Log"}
+              </span>
             </button>
           </div>
         </form>
@@ -278,4 +301,3 @@ export default function AddFuelModal({
     </div>
   );
 }
-
