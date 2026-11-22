@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { FuelLog as PrismaFuelLog } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service.js';
 import { VehiclesService } from '../vehicles/vehicles.service.js';
 import { CreateFuelLogDto } from './dto/create-fuel-log.dto.js';
 import { UpdateFuelLogDto } from './dto/update-fuel-log.dto.js';
@@ -10,13 +12,15 @@ import { FuelLog } from './entities/fuel-log.entity.js';
 
 @Injectable()
 export class FuelLogsService {
-  private readonly fuelLogs: FuelLog[] = [];
-  private nextId = 1;
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly vehiclesService: VehiclesService,
+  ) {}
 
-  constructor(private readonly vehiclesService: VehiclesService) {}
-
-  create(createFuelLogDto: CreateFuelLogDto): FuelLog {
-    const vehicle = this.vehiclesService.findOne(createFuelLogDto.vehicleId);
+  async create(createFuelLogDto: CreateFuelLogDto): Promise<FuelLog> {
+    const vehicle = await this.vehiclesService.findOne(
+      createFuelLogDto.vehicleId,
+    );
 
     if (!vehicle.isActive) {
       throw new BadRequestException(
@@ -42,9 +46,13 @@ export class FuelLogsService {
 
     let fuelEfficiency: number | null = null;
     if (createFuelLogDto.isFullTank) {
-      const lastFullLog = this.fuelLogs.findLast(
-        (log) => log.vehicleId === createFuelLogDto.vehicleId && log.isFullTank,
-      );
+      const lastFullLog = await this.prisma.fuelLog.findFirst({
+        where: {
+          vehicleId: createFuelLogDto.vehicleId,
+          isFullTank: true,
+        },
+        orderBy: { id: 'desc' },
+      });
 
       if (lastFullLog) {
         const distance =
@@ -56,53 +64,63 @@ export class FuelLogsService {
     }
 
     // Sinkronisasi odometer kendaraan dan hitung ulang wear komponen jika ada
-    this.vehiclesService.update(vehicle.id, {
+    await this.vehiclesService.update(vehicle.id, {
       currentOdometer: createFuelLogDto.odometerAtRefuel,
     });
 
-    const newLog: FuelLog = {
-      id: this.nextId++,
-      vehicleId: createFuelLogDto.vehicleId,
-      fuelType: createFuelLogDto.fuelType,
-      liters: createFuelLogDto.liters,
-      totalCost: createFuelLogDto.totalCost,
-      odometerAtRefuel: createFuelLogDto.odometerAtRefuel,
-      isFullTank: createFuelLogDto.isFullTank,
-      fuelEfficiency,
-      refuelDate: createFuelLogDto.refuelDate.slice(0, 10),
-      createdAt: new Date(),
-    };
+    const parsedDate = new Date(createFuelLogDto.refuelDate.slice(0, 10));
+    const created = await this.prisma.fuelLog.create({
+      data: {
+        vehicleId: createFuelLogDto.vehicleId,
+        fuelType: createFuelLogDto.fuelType,
+        liters: createFuelLogDto.liters,
+        totalCost: createFuelLogDto.totalCost,
+        odometerAtRefuel: createFuelLogDto.odometerAtRefuel,
+        isFullTank: createFuelLogDto.isFullTank,
+        fuelEfficiency,
+        refuelDate: parsedDate,
+      },
+    });
 
-    this.fuelLogs.push(newLog);
-    return newLog;
+    return this.toFuelLogEntity(created);
   }
 
-  findAll(vehicleId?: string): FuelLog[] {
+  async findAll(vehicleId?: string): Promise<FuelLog[]> {
     if (vehicleId) {
-      this.vehiclesService.findOne(vehicleId);
+      await this.vehiclesService.findOne(vehicleId);
     }
 
-    return this.fuelLogs
-      .filter((log) => (!vehicleId ? true : log.vehicleId === vehicleId))
-      .toSorted((a, b) => b.id - a.id);
+    const logs = await this.prisma.fuelLog.findMany({
+      where: {
+        ...(vehicleId && { vehicleId }),
+      },
+      orderBy: { id: 'desc' },
+    });
+
+    return logs.map((log) => this.toFuelLogEntity(log));
   }
 
-  findOne(id: number): FuelLog {
-    const log = this.fuelLogs.find((item) => item.id === id);
+  async findOne(id: number): Promise<FuelLog> {
+    const log = await this.prisma.fuelLog.findUnique({
+      where: { id },
+    });
     if (!log) {
       throw new NotFoundException(
         `Catatan BBM dengan ID ${id} tidak ditemukan`,
       );
     }
-    return log;
+    return this.toFuelLogEntity(log);
   }
 
-  update(id: number, updateFuelLogDto: UpdateFuelLogDto): FuelLog {
-    const log = this.findOne(id);
-    const targetVehicleId = updateFuelLogDto.vehicleId ?? log.vehicleId;
-    const vehicle = this.vehiclesService.findOne(targetVehicleId);
+  async update(
+    id: number,
+    updateFuelLogDto: UpdateFuelLogDto,
+  ): Promise<FuelLog> {
+    const existing = await this.findOne(id);
+    const targetVehicleId = updateFuelLogDto.vehicleId ?? existing.vehicleId;
+    const vehicle = await this.vehiclesService.findOne(targetVehicleId);
 
-    const nextLiters = updateFuelLogDto.liters ?? log.liters;
+    const nextLiters = updateFuelLogDto.liters ?? existing.liters;
     if (
       vehicle.tankCapacity !== null &&
       vehicle.tankCapacity > 0 &&
@@ -114,51 +132,78 @@ export class FuelLogsService {
     }
 
     const nextOdometer =
-      updateFuelLogDto.odometerAtRefuel ?? log.odometerAtRefuel;
+      updateFuelLogDto.odometerAtRefuel ?? existing.odometerAtRefuel;
     if (nextOdometer < vehicle.initialOdometer) {
       throw new BadRequestException(
         `Odometer saat pengisian (${nextOdometer} km) tidak boleh lebih kecil dari odometer awal kendaraan (${vehicle.initialOdometer} km)`,
       );
     }
 
-    if (updateFuelLogDto.vehicleId !== undefined) {
-      log.vehicleId = updateFuelLogDto.vehicleId;
-    }
-    if (updateFuelLogDto.fuelType !== undefined) {
-      log.fuelType = updateFuelLogDto.fuelType;
-    }
-    if (updateFuelLogDto.liters !== undefined) {
-      log.liters = updateFuelLogDto.liters;
-    }
-    if (updateFuelLogDto.totalCost !== undefined) {
-      log.totalCost = updateFuelLogDto.totalCost;
-    }
-    if (updateFuelLogDto.odometerAtRefuel !== undefined) {
-      log.odometerAtRefuel = updateFuelLogDto.odometerAtRefuel;
-      if (updateFuelLogDto.odometerAtRefuel > vehicle.currentOdometer) {
-        this.vehiclesService.update(vehicle.id, {
-          currentOdometer: updateFuelLogDto.odometerAtRefuel,
-        });
-      }
-    }
-    if (updateFuelLogDto.isFullTank !== undefined) {
-      log.isFullTank = updateFuelLogDto.isFullTank;
-    }
-    if (updateFuelLogDto.refuelDate !== undefined) {
-      log.refuelDate = updateFuelLogDto.refuelDate.slice(0, 10);
+    if (
+      updateFuelLogDto.odometerAtRefuel !== undefined &&
+      updateFuelLogDto.odometerAtRefuel > vehicle.currentOdometer
+    ) {
+      await this.vehiclesService.update(vehicle.id, {
+        currentOdometer: updateFuelLogDto.odometerAtRefuel,
+      });
     }
 
-    return log;
+    const updated = await this.prisma.fuelLog.update({
+      where: { id },
+      data: {
+        ...(updateFuelLogDto.vehicleId !== undefined && {
+          vehicleId: updateFuelLogDto.vehicleId,
+        }),
+        ...(updateFuelLogDto.fuelType !== undefined && {
+          fuelType: updateFuelLogDto.fuelType,
+        }),
+        ...(updateFuelLogDto.liters !== undefined && {
+          liters: updateFuelLogDto.liters,
+        }),
+        ...(updateFuelLogDto.totalCost !== undefined && {
+          totalCost: updateFuelLogDto.totalCost,
+        }),
+        ...(updateFuelLogDto.odometerAtRefuel !== undefined && {
+          odometerAtRefuel: updateFuelLogDto.odometerAtRefuel,
+        }),
+        ...(updateFuelLogDto.isFullTank !== undefined && {
+          isFullTank: updateFuelLogDto.isFullTank,
+        }),
+        ...(updateFuelLogDto.refuelDate !== undefined && {
+          refuelDate: new Date(updateFuelLogDto.refuelDate.slice(0, 10)),
+        }),
+      },
+    });
+
+    return this.toFuelLogEntity(updated);
   }
 
-  remove(id: number): { deleted: boolean; id: number; message: string } {
-    this.findOne(id);
-    const index = this.fuelLogs.findIndex((item) => item.id === id);
-    this.fuelLogs.splice(index, 1);
+  async remove(
+    id: number,
+  ): Promise<{ deleted: boolean; id: number; message: string }> {
+    await this.findOne(id);
+    await this.prisma.fuelLog.delete({
+      where: { id },
+    });
     return {
       deleted: true,
       id,
       message: `Catatan BBM dengan ID ${id} berhasil dihapus`,
+    };
+  }
+
+  private toFuelLogEntity(log: PrismaFuelLog): FuelLog {
+    return {
+      id: log.id,
+      vehicleId: log.vehicleId,
+      fuelType: log.fuelType,
+      liters: log.liters,
+      totalCost: Number(log.totalCost),
+      odometerAtRefuel: log.odometerAtRefuel,
+      isFullTank: log.isFullTank,
+      fuelEfficiency: log.fuelEfficiency,
+      refuelDate: log.refuelDate.toISOString().slice(0, 10),
+      createdAt: log.createdAt,
     };
   }
 }

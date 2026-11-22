@@ -1,5 +1,7 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { createInMemoryPrismaMock } from '../prisma/prisma-mock.helper.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import { AuthService } from './auth.service.js';
 
 describe('AuthService', () => {
@@ -7,14 +9,20 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [AuthService],
+      providers: [
+        AuthService,
+        {
+          provide: PrismaService,
+          useValue: createInMemoryPrismaMock(),
+        },
+      ],
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
   });
 
-  it('should register a new user via signup and verify issued token', () => {
-    const signupResult = authService.signup({
+  it('should register a new user via signup and verify issued token', async () => {
+    const signupResult = await authService.signup({
       fullName: 'Karl Benz',
       email: 'newowner@example.com',
       primaryVehicle: 'Porsche 911 GT3',
@@ -29,27 +37,27 @@ describe('AuthService', () => {
     expect(payload.email).toBe('newowner@example.com');
   });
 
-  it('should reject duplicate signup emails and wrong login passwords', () => {
-    authService.signup({
+  it('should reject duplicate signup emails and wrong login passwords', async () => {
+    await authService.signup({
       fullName: 'Owner One',
       email: 'owner1@example.com',
       password: 'Password123!',
     });
 
-    expect(() =>
+    await expect(
       authService.signup({
         fullName: 'Owner Two',
         email: 'owner1@example.com',
         password: 'Password456!',
       }),
-    ).toThrow(ConflictException);
+    ).rejects.toThrow(ConflictException);
 
-    expect(() =>
+    await expect(
       authService.login({
         email: 'owner1@example.com',
         password: 'WrongPassword',
       }),
-    ).toThrow(UnauthorizedException);
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('should reject tampered or invalid tokens', () => {

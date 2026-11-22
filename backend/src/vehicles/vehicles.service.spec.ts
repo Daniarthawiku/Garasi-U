@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { createInMemoryPrismaMock } from '../prisma/prisma-mock.helper.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import {
   VehicleServiceStatus,
   VehicleType,
@@ -15,14 +17,20 @@ describe('VehiclesService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [VehiclesService],
+      providers: [
+        VehiclesService,
+        {
+          provide: PrismaService,
+          useValue: createInMemoryPrismaMock(),
+        },
+      ],
     }).compile();
 
     service = module.get<VehiclesService>(VehiclesService);
   });
 
-  it('should create a vehicle with initial NOT_SYNC status and empty parts', () => {
-    const vehicle = service.create({
+  it('should create a vehicle with initial NOT_SYNC status and empty parts', async () => {
+    const vehicle = await service.create({
       brand: 'Toyota',
       model: 'GR Yaris',
       nickname: 'Pocket Rocket',
@@ -41,8 +49,8 @@ describe('VehiclesService', () => {
     expect(vehicle.lastServiceDate).toBeNull();
   });
 
-  it('should reject duplicate license plates (case-insensitive)', () => {
-    service.create({
+  it('should reject duplicate license plates (case-insensitive)', async () => {
+    await service.create({
       brand: 'Toyota',
       model: 'GR Yaris',
       type: VehicleType.CAR,
@@ -50,7 +58,7 @@ describe('VehiclesService', () => {
       initialOdometer: 1000,
     });
 
-    expect(() =>
+    await expect(
       service.create({
         brand: 'Honda',
         model: 'Civic',
@@ -58,44 +66,45 @@ describe('VehiclesService', () => {
         plate: 'b 1234 abc',
         initialOdometer: 500,
       }),
-    ).toThrow(ConflictException);
+    ).rejects.toThrow(ConflictException);
   });
 
-  it('should support findAll, findOne, update, and remove', () => {
-    const created = service.create({
+  it('should support findAll, findOne, update, and remove', async () => {
+    const created = await service.create({
       brand: 'Ducati',
       model: 'Panigale V4R',
       type: VehicleType.MOTORCYCLE,
       initialOdometer: 15000,
     });
 
-    expect(service.findAll()).toHaveLength(1);
-    expect(service.findOne(created.id).model).toBe('Panigale V4R');
+    expect(await service.findAll()).toHaveLength(1);
+    expect((await service.findOne(created.id)).model).toBe('Panigale V4R');
 
-    const updated = service.update(created.id, {
+    const updated = await service.update(created.id, {
       nickname: 'Red Rocket',
       currentOdometer: 18450,
     });
     expect(updated.nickname).toBe('Red Rocket');
     expect(updated.currentOdometer).toBe(18450);
 
-    const removed = service.remove(created.id);
+    const removed = await service.remove(created.id);
     expect(removed).toEqual({ deleted: true, id: created.id });
-    expect(service.findAll()).toHaveLength(0);
-    expect(() => service.findOne(created.id)).toThrow(NotFoundException);
+    expect(await service.findAll()).toHaveLength(0);
+    await expect(service.findOne(created.id)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
-  it('should throw BadRequestException when updating currentOdometer below initialOdometer', () => {
-    const vehicle = service.create({
+  it('should throw BadRequestException when updating currentOdometer below initialOdometer', async () => {
+    const vehicle = await service.create({
       brand: 'Toyota',
       model: 'Yaris',
       type: VehicleType.CAR,
       initialOdometer: 50000,
     });
 
-    expect(() =>
+    await expect(
       service.update(vehicle.id, { currentOdometer: 45000 }),
-    ).toThrow(BadRequestException);
+    ).rejects.toThrow(BadRequestException);
   });
 });
-

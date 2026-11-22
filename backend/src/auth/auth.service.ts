@@ -10,15 +10,13 @@ import { resolve } from 'node:path';
 import {
   ConflictException,
   Injectable,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { SignupDto } from './dto/signup.dto.js';
-import {
-  AuthTokenPayload,
-  PublicUser,
-  User,
-} from './entities/user.entity.js';
+import { AuthTokenPayload, PublicUser } from './entities/user.entity.js';
 
 interface DummyAccountJson {
   id?: string;
@@ -28,14 +26,26 @@ interface DummyAccountJson {
   primaryVehicle?: string;
 }
 
+interface StoredUserRecord {
+  id: string;
+  name: string;
+  email: string;
+  primaryVehicle: string | null;
+  passwordSalt: string;
+  passwordHash: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export type { AuthTokenPayload, PublicUser };
 
 @Injectable()
-export class AuthService {
-  private readonly users: User[] = [];
+export class AuthService implements OnModuleInit {
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor() {
-    this.loadLocalDummyAccount();
+  async onModuleInit(): Promise<void> {
+    await this.seedLocalDummyAccount();
   }
 
   private getSigningSecret(): string {
@@ -48,9 +58,9 @@ export class AuthService {
     return scryptSync(password, salt, 64).toString('hex');
   }
 
-  private verifyPassword(password: string, user: User): boolean {
+  private verifyPassword(password: string, user: StoredUserRecord): boolean {
     const computed = Buffer.from(
-      this.hashPassword(password, user.salt),
+      this.hashPassword(password, user.passwordSalt),
       'hex',
     );
     const stored = Buffer.from(user.passwordHash, 'hex');
@@ -58,7 +68,7 @@ export class AuthService {
     return timingSafeEqual(computed, stored);
   }
 
-  private loadLocalDummyAccount(): void {
+  private async seedLocalDummyAccount(): Promise<void> {
     const candidatePaths = [
       resolve(import.meta.dirname, 'dummy-account.local.json'),
       resolve(process.cwd(), 'src/auth/dummy-account.local.json'),
@@ -74,23 +84,31 @@ export class AuthService {
       if (!parsed.email || !parsed.password) return;
 
       const normalizedEmail = parsed.email.trim().toLowerCase();
-      if (this.users.some((u) => u.email === normalizedEmail)) return;
+      const existing = await this.prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      });
+      if (existing) return;
 
-      const salt = randomBytes(16).toString('hex');
-      const now = new Date();
-      this.users.push({
-        id: parsed.id || randomUUID(),
-        name: parsed.name?.trim() || 'GarasiU Owner',
-        email: normalizedEmail,
-        primaryVehicle: parsed.primaryVehicle?.trim() || null,
-        salt,
-        passwordHash: this.hashPassword(parsed.password, salt),
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
+      const passwordSalt = randomBytes(16).toString('hex');
+      const isUuid =
+        typeof parsed.id === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          parsed.id,
+        );
+
+      await this.prisma.user.create({
+        data: {
+          id: isUuid ? parsed.id : randomUUID(),
+          name: parsed.name?.trim() || 'GarasiU Owner',
+          email: normalizedEmail,
+          primaryVehicle: parsed.primaryVehicle?.trim() || null,
+          passwordSalt,
+          passwordHash: this.hashPassword(parsed.password, passwordSalt),
+          isActive: true,
+        },
       });
     } catch {
-      // Abaikan jika file lokal tidak valid JSON
+      // Abaikan jika file lokal tidak valid JSON atau gagal seed
     }
   }
 
@@ -140,7 +158,7 @@ export class AuthService {
     return payload;
   }
 
-  private toPublicUser(user: User): PublicUser {
+  private toPublicUser(user: StoredUserRecord): PublicUser {
     return {
       id: user.id,
       name: user.name,
@@ -152,9 +170,13 @@ export class AuthService {
     };
   }
 
-  login(loginDto: LoginDto): { accessToken: string; user: PublicUser } {
+  async login(
+    loginDto: LoginDto,
+  ): Promise<{ accessToken: string; user: PublicUser }> {
     const normalizedEmail = loginDto.email.trim().toLowerCase();
-    const user = this.users.find((u) => u.email === normalizedEmail);
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
     if (!user || !this.verifyPassword(loginDto.password, user)) {
       throw new UnauthorizedException('Invalid email or password');
@@ -176,30 +198,30 @@ export class AuthService {
     };
   }
 
-  signup(signupDto: SignupDto): { accessToken: string; user: PublicUser } {
+  async signup(
+    signupDto: SignupDto,
+  ): Promise<{ accessToken: string; user: PublicUser }> {
     const normalizedEmail = signupDto.email.trim().toLowerCase();
-    const existing = this.users.find((u) => u.email === normalizedEmail);
+    const existing = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (existing) {
       throw new ConflictException(
         `Account with email "${normalizedEmail}" already exists`,
       );
     }
 
-    const salt = randomBytes(16).toString('hex');
-    const now = new Date();
-    const newUser: User = {
-      id: randomUUID(),
-      name: signupDto.fullName.trim(),
-      email: normalizedEmail,
-      primaryVehicle: signupDto.primaryVehicle?.trim() || null,
-      salt,
-      passwordHash: this.hashPassword(signupDto.password, salt),
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    this.users.push(newUser);
+    const passwordSalt = randomBytes(16).toString('hex');
+    const newUser = await this.prisma.user.create({
+      data: {
+        name: signupDto.fullName.trim(),
+        email: normalizedEmail,
+        primaryVehicle: signupDto.primaryVehicle?.trim() || null,
+        passwordSalt,
+        passwordHash: this.hashPassword(signupDto.password, passwordSalt),
+        isActive: true,
+      },
+    });
 
     const accessToken = this.signToken({
       sub: newUser.id,
@@ -214,8 +236,10 @@ export class AuthService {
     };
   }
 
-  getProfile(userId: string): PublicUser {
-    const user = this.users.find((u) => u.id === userId);
+  async getProfile(userId: string): Promise<PublicUser> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
     if (!user) {
       throw new UnauthorizedException('User session is no longer valid');
     }

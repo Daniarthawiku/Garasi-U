@@ -1,5 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { createInMemoryPrismaMock } from '../prisma/prisma-mock.helper.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import {
   VehicleServiceStatus,
   VehicleType,
@@ -17,15 +19,22 @@ describe('ServiceLogsService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [VehiclesService, ServiceLogsService],
+      providers: [
+        VehiclesService,
+        ServiceLogsService,
+        {
+          provide: PrismaService,
+          useValue: createInMemoryPrismaMock(),
+        },
+      ],
     }).compile();
 
     vehiclesService = module.get<VehiclesService>(VehiclesService);
     serviceLogsService = module.get<ServiceLogsService>(ServiceLogsService);
   });
 
-  it('should create a service log and populate vehicle parts & status from NOT_SYNC to HEALTHY', () => {
-    const vehicle = vehiclesService.create({
+  it('should create a service log and populate vehicle parts & status from NOT_SYNC to HEALTHY', async () => {
+    const vehicle = await vehiclesService.create({
       brand: 'Toyota',
       model: 'Yaris',
       type: VehicleType.CAR,
@@ -35,7 +44,7 @@ describe('ServiceLogsService', () => {
     expect(vehicle.serviceStatus).toBe(VehicleServiceStatus.NOT_SYNC);
     expect(vehicle.parts).toHaveLength(0);
 
-    const log = serviceLogsService.create({
+    const log = await serviceLogsService.create({
       vehicleId: vehicle.id,
       serviceDate: '2026-11-15',
       odometerAtService: 142500,
@@ -50,7 +59,7 @@ describe('ServiceLogsService', () => {
     expect(log.status).toBe(ServiceLogStatus.VERIFIED);
     expect(log.vehiclePartId).toBeDefined();
 
-    const updatedVehicle = vehiclesService.findOne(vehicle.id);
+    const updatedVehicle = await vehiclesService.findOne(vehicle.id);
     expect(updatedVehicle.currentOdometer).toBe(142500);
     expect(updatedVehicle.serviceStatus).toBe(VehicleServiceStatus.HEALTHY);
     expect(updatedVehicle.parts).toHaveLength(1);
@@ -58,8 +67,8 @@ describe('ServiceLogsService', () => {
     expect(updatedVehicle.parts[0].wear).toBe(0);
   });
 
-  it('should throw NotFoundException when vehicleId does not exist', () => {
-    expect(() =>
+  it('should throw NotFoundException when vehicleId does not exist', async () => {
+    await expect(
       serviceLogsService.create({
         vehicleId: '00000000-0000-4000-8000-000000000000',
         serviceDate: '2026-11-15',
@@ -69,18 +78,18 @@ describe('ServiceLogsService', () => {
         workshop: 'Workshop A',
         cost: 300000,
       }),
-    ).toThrow(NotFoundException);
+    ).rejects.toThrow(NotFoundException);
   });
 
-  it('should support findAll, findOne, update, and remove', () => {
-    const vehicle = vehiclesService.create({
+  it('should support findAll, findOne, update, and remove', async () => {
+    const vehicle = await vehiclesService.create({
       brand: 'Honda',
       model: 'CBR250RR',
       type: VehicleType.MOTORCYCLE,
       initialOdometer: 5000,
     });
 
-    const created = serviceLogsService.create({
+    const created = await serviceLogsService.create({
       vehicleId: vehicle.id,
       serviceDate: '2026-11-10',
       odometerAtService: 6000,
@@ -90,32 +99,32 @@ describe('ServiceLogsService', () => {
       cost: 850000,
     });
 
-    expect(serviceLogsService.findAll(vehicle.id)).toHaveLength(1);
-    expect(serviceLogsService.findOne(created.id).workshop).toBe(
+    expect(await serviceLogsService.findAll(vehicle.id)).toHaveLength(1);
+    expect((await serviceLogsService.findOne(created.id)).workshop).toBe(
       'One3 Motoshop',
     );
 
-    const updated = serviceLogsService.update(created.id, {
+    const updated = await serviceLogsService.update(created.id, {
       cost: 900000,
       isWarrantyClaim: true,
     });
     expect(updated.cost).toBe(900000);
     expect(updated.isWarrantyClaim).toBe(true);
 
-    const removed = serviceLogsService.remove(created.id);
+    const removed = await serviceLogsService.remove(created.id);
     expect(removed).toEqual({ deleted: true, id: created.id });
-    expect(serviceLogsService.findAll()).toHaveLength(0);
+    expect(await serviceLogsService.findAll()).toHaveLength(0);
   });
 
-  it('should throw BadRequestException when odometerAtService is below initialOdometer or vehicle is inactive', () => {
-    const activeVehicle = vehiclesService.create({
+  it('should throw BadRequestException when odometerAtService is below initialOdometer or vehicle is inactive', async () => {
+    const activeVehicle = await vehiclesService.create({
       brand: 'Toyota',
       model: 'GR86',
       type: VehicleType.CAR,
       initialOdometer: 20000,
     });
 
-    expect(() =>
+    await expect(
       serviceLogsService.create({
         vehicleId: activeVehicle.id,
         serviceDate: '2026-11-15',
@@ -125,9 +134,9 @@ describe('ServiceLogsService', () => {
         workshop: 'Auto2000',
         cost: 500000,
       }),
-    ).toThrow(BadRequestException);
+    ).rejects.toThrow(BadRequestException);
 
-    const inactiveVehicle = vehiclesService.create({
+    const inactiveVehicle = await vehiclesService.create({
       brand: 'Honda',
       model: 'Brio',
       type: VehicleType.CAR,
@@ -135,7 +144,7 @@ describe('ServiceLogsService', () => {
       isActive: false,
     });
 
-    expect(() =>
+    await expect(
       serviceLogsService.create({
         vehicleId: inactiveVehicle.id,
         serviceDate: '2026-11-15',
@@ -145,7 +154,6 @@ describe('ServiceLogsService', () => {
         workshop: 'Honda Resmi',
         cost: 400000,
       }),
-    ).toThrow(BadRequestException);
+    ).rejects.toThrow(BadRequestException);
   });
 });
-

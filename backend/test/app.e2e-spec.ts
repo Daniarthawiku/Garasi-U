@@ -3,6 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
+import { createInMemoryPrismaMock } from './../src/prisma/prisma-mock.helper.js';
+import { PrismaService } from './../src/prisma/prisma.service.js';
 
 describe('GarasiU API Endpoints (e2e)', () => {
   let app: INestApplication<App>;
@@ -11,7 +13,10 @@ describe('GarasiU API Endpoints (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(createInMemoryPrismaMock())
+      .compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
